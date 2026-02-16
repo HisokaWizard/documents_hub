@@ -1,114 +1,78 @@
 # AGENTS.md — Documents Hub
 
-Настройки для работы с репозиторием документации и knowledge base.
-
-## Назначение репозитория
-
-Этот репозиторий — хаб документации содержащий:
-- **Описание паттернов** работы с backend и frontend на Node.js
-- **Документацию OpenCode** — как работает система агентов, tools, skills
-- **Полезные знания** по технологиям для AI-агентов и приложений
-
-Приложения и skills могут черпать информацию из этого репозитория для обучения.
-
-## Структура репозитория
+## Repository Structure
 
 ```
 documents_hub/
-├── opencode/              # Документация OpenCode (готово)
-│   ├── agents.md          # Режимы работы агентов (Plan/Build)
-│   ├── architecture.md    # Архитектура системы
-│   ├── mcps.md           # MCP протокол
-│   ├── skills.md         # Skills для агентов
-│   ├── subagents.md      # Subagents
-│   └── tools.md          # Tool System
-├── backend/               # Паттерны backend (в разработке)
-└── frontend/              # Паттерны frontend (в разработке)
+├── opencode/              # OpenCode documentation
+├── backend/               # Backend patterns (NestJS)
+├── frontend/              # Frontend patterns (React/TypeScript)
+└── testing/               # Testing rules and TDD
 ```
 
-## Работа с документацией
-
-### Формат документов
-
-- **Язык**: Русский или английский (консистентно в пределах документа)
-- **Формат**: Markdown с mermaid-диаграммами
-- **Структура**: Всегда include Table of Contents для документов >50 строк
-- **Примеры**: Использовать реальные примеры из кода
-
-### Содержание разделов opencode/
-
-| Файл | Описание |
-|------|----------|
-| `agents.md` | Режимы Plan/Build, конфигурация агентов |
-| `architecture.md` | Общая архитектура OpenCode, компоненты |
-| `tools.md` | Встроенные и кастомные tools |
-| `subagents.md` | Делегирование задач subagents |
-| `skills.md` | Как создавать и использовать skills |
-| `mcps.md` | Model Context Protocol серверы |
-
-### Добавление нового контента
-
-**В opencode/**:
-- Добавлять новые .md файлы по мере необходимости
-- Обновлять существующие при изменениях в OpenCode
-
-**В backend/frontend/**:
-- Создавать поддиректории по темам: `backend/nestjs/`, `frontend/react/`
-- Использовать структуру: README.md + примеры кода
-
-## Соглашения по документации
-
-### Заголовки
-```markdown
-# Название раздела
-
-## Содержание
-1. [Пункт 1](#пункт-1)
-2. [Пункт 2](#пункт-2)
-
----
-
-## Пункт 1
-```
-
-### Mermaid диаграммы
-Использовать для визуализации архитектуры:
-```markdown
-graph LR
-    A[Component] --> B[Process]
-```
-
-### Code blocks
-Указывать язык для подсветки синтаксиса:
-```markdown
-typescript
-const example = "code";
-```
-
-## Команды
-
-Это документационный репозиторий, команд сборки нет.
+## Commands
 
 ```bash
-# Проверка валидности markdown
+# Markdown validation
 npx markdownlint-cli "*.md"
-
-# Проверка ссылок
 npx markdown-link-check "*.md"
 ```
 
-## Правила работы агентов
+## Documentation Conventions
 
-1. **Читать существующие документы** перед добавлением нового контента
-2. **Следовать структуре** уже существующих .md файлов в opencode/
-3. **Обновлять оглавление** при изменении структуры документа
-4. **Не дублировать** информацию — ссылаться на существующие разделы
-5. **Использовать примеры** из реальных проектов где возможно
+### Format
+- **Language**: Russian or English (consistent within document)
+- **Format**: Markdown with mermaid diagrams
+- **TOC**: Required for documents >50 lines
+- **Examples**: Real code examples preferred
 
-## Будущее развитие
+### Structure
+```markdown
+# Title
 
-Планируется добавление:
-- Паттернов NestJS в backend/
-- Паттернов React/Vue в frontend/
-- Integration guides для популярных библиотек
-- Best practices по безопасности и производительности
+## Содержание
+1. [Section](#section)
+
+---
+
+## Section
+```
+
+### Code Blocks
+Always specify language:
+```typescript
+const example = "code";
+```
+
+## Content Guidelines
+
+### Adding to `opencode/`
+- Add .md files as needed
+- Update existing files when OpenCode changes
+
+### Adding to `backend/` / `frontend/`
+- Create subdirectories by topic: `backend/nestjs/`, `frontend/react/`
+- Structure: README.md + code examples
+
+### Adding to `testing/`
+- Update TESTING_RULES.md for TDD principles
+- Reference specific framework guides in backend/frontend
+
+## Agent Rules
+
+1. **Read existing docs** before adding content
+2. **Follow structure** of existing .md files
+3. **Update TOC** when changing document structure
+4. **Don't duplicate** — reference existing sections
+5. **Use examples** from real projects when possible
+6. **Be concise** — prefer linking over duplicating
+
+## Key References
+
+| File | Content |
+|------|---------|
+| `testing/TESTING_RULES.md` | TDD, red-green-refactor |
+| `backend/BACKEND_TESTING.md` | NestJS testing |
+| `frontend/TESTING.md` | React testing patterns |
+| `frontend/TYPESCRIPT.md` | TypeScript conventions |
+| `backend/nestjs/*.md` | NestJS patterns |
