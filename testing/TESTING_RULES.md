@@ -37,14 +37,14 @@ describe('UsersService', () => {
   describe('create', () => {
     it('should create user with valid data', async () => {
       // Arrange
-      const createUserDto = { 
-        email: 'test@test.com', 
-        password: 'password123' 
+      const createUserDto = {
+        email: 'test@test.com',
+        password: 'password123',
       };
-      
+
       // Act
       const result = await service.create(createUserDto);
-      
+
       // Assert
       expect(result).toHaveProperty('id');
       expect(result.email).toBe(createUserDto.email);
@@ -54,6 +54,7 @@ describe('UsersService', () => {
 ```
 
 **Принципы:**
+
 - Тест описывает желаемое поведение
 - Тест компилируется, но падает при выполнении
 - Падает по правильной причине (не из-за ошибки в тесте)
@@ -81,6 +82,7 @@ export class UsersService {
 ```
 
 **Принципы:**
+
 - Делайте проще, чем нужно
 - Дублируйте код, если нужно
 - Используйте жестко закодированные значения
@@ -107,24 +109,23 @@ export class UsersService {
     if (existing) {
       throw new ConflictException('Email already exists');
     }
-    
+
     // Хешируем пароль
-    const hashedPassword = await this.passwordService.hash(
-      createUserDto.password
-    );
-    
+    const hashedPassword = await this.passwordService.hash(createUserDto.password);
+
     // Создаем пользователя
     const user = this.usersRepository.create({
       ...createUserDto,
       password: hashedPassword,
     });
-    
+
     return this.usersRepository.save(user);
   }
 }
 ```
 
 **Принципы:**
+
 - Удаляйте дублирование
 - Улучшайте читаемость
 - Добавляйте обработку ошибок
@@ -167,7 +168,7 @@ describe('Calculator', () => {
   it('should add two numbers', () => {
     expect(calculator.add(2, 3)).toBe(5);
   });
-  
+
   it('should add different numbers', () => {
     expect(calculator.add(10, 20)).toBe(30);  // RED
   });
@@ -204,10 +205,10 @@ describe('Feature', () => {
     // Arrange — Подготовка
     const input = { email: 'test@test.com' };
     const expectedOutput = { id: '1', email: 'test@test.com' };
-    
+
     // Act — Действие
     const result = await service.create(input);
-    
+
     // Assert — Проверка
     expect(result).toEqual(expectedOutput);
   });
@@ -216,23 +217,29 @@ describe('Feature', () => {
 
 ---
 
-## Частные правила тестирования
+## Частные правила тестирования - ОБЯЗАТЕЛЬНО к прочтению
+
+**Данные правила строго необходимо прочитать для валидного написания тестов по направлениям**s
 
 Для детальных правил тестирования в конкретных областях обратитесь к:
 
 ### Frontend Testing
+
 **Файл:** [`./frontend/TESTING.md`](../frontend/TESTING.md)
 
 Содержит правила для:
+
 - Unit testing React компонентов
 - Testing Library best practices
 - E2E тестирование с Playwright
 - Тестирование hooks и Redux
 
-### Backend Testing  
+### Backend Testing
+
 **Файл:** [`./backend/BACKEND_TESTING.md`](../backend/BACKEND_TESTING.md)
 
 Содержит правила для:
+
 - Unit тестирование NestJS сервисов
 - Integration тестирование контроллеров
 - Тестирование с in-memory базой данных
@@ -256,7 +263,7 @@ it('should send welcome email after registration', () => {
   // ...
 });
 
-// ❌ Плохо: Тест описывает реализацию  
+// ❌ Плохо: Тест описывает реализацию
 it('should call emailService.sendWelcomeEmail with correct params', () => {
   // ...
 });
