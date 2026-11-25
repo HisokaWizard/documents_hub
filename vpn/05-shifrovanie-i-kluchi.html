@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Модуль 05 · Шифрование внутри туннеля</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0E13;
+  --surface:#111823;
+  --surface2:#18212E;
+  --line:#232F3F;
+  --ink:#E8EEF4;
+  --muted:#8A97A4;
+  --accent:#35E0A1;
+  --accent-dim:rgba(53,224,161,.14);
+  --exposed:#FF7A6B;
+  --exposed-dim:rgba(255,122,107,.13);
+  --packet:#58A6FF;
+  --radius:14px;
+  --font-head:'Unbounded',system-ui,sans-serif;
+  --font-body:'Golos Text',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:#04120C}
+
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:100;transition:width .15s linear}
+#dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;z-index:90}
+#dots a{width:9px;height:9px;border-radius:50%;background:var(--line);display:block;transition:all .3s}
+#dots a.on{background:var(--accent);transform:scale(1.45)}
+@media(max-width:900px){#dots{display:none}}
+
+main{max-width:1060px;margin:0 auto;padding:0 28px}
+section{padding:96px 0 40px;min-height:60vh}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:none}
+.kicker{font-family:var(--font-mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1{font-family:var(--font-head);font-weight:800;font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.01em}
+h2{font-family:var(--font-head);font-weight:600;font-size:clamp(22px,3.2vw,32px);line-height:1.25;margin-bottom:18px}
+h3{font-size:17px;font-weight:700}
+p.lead{color:var(--muted);font-size:19px;max-width:680px;margin-top:18px}
+p+p{margin-top:14px}
+.term{color:var(--accent);font-weight:600}
+code,.mono{font-family:var(--font-mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:#BFD4E6}
+
+#hero{min-height:92vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+#hero-bg{position:absolute;inset:0;pointer-events:none;opacity:.5}
+.hero-badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;margin-bottom:26px;width:max-content}
+.hero-badge b{color:var(--accent);font-weight:600}
+.scroll-hint{margin-top:56px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:10px}
+.scroll-hint .arrow{display:inline-block;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+.hero-games{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.hero-games span{font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--surface)}
+
+.scene-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:26px;position:relative}
+.scene-svg{width:100%;height:auto;display:block}
+.node-g{cursor:pointer}
+.node-g .node-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .3s,fill .3s}
+.node-g:hover .node-box,.node-g.sel .node-box{stroke:var(--accent)}
+.node-g.sel .node-box{fill:#16211C}
+.node-label{font-family:var(--font-body);font-size:14px;font-weight:600;fill:var(--ink);text-anchor:middle}
+.node-sub{font-family:var(--font-mono);font-size:10px;fill:var(--muted);text-anchor:middle}
+.wire{stroke:var(--line);stroke-width:2;fill:none}
+.pkt-lbl{font-family:var(--font-mono);font-size:9.5px;fill:#ADCBFF;text-anchor:middle}
+.node-g:focus{outline:none}
+.node-g:focus-visible .node-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+
+.btn{display:inline-flex;align-items:center;gap:9px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:11px;padding:11px 20px;font-family:var(--font-body);font-size:15px;font-weight:600;cursor:pointer;transition:transform .25s,box-shadow .25s,opacity .25s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 0 20px rgba(53,224,161,.22)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.btn.ghost{background:none;border-color:var(--line);color:var(--muted)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
+.score{font-family:var(--font-mono);font-size:14px;color:var(--accent)}
+
+.speech{display:flex;gap:13px;align-items:flex-start;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:13px 17px;margin-top:16px;font-size:15px;min-height:56px;line-height:1.5}
+.speech .ava{font-size:22px;line-height:1.2;flex:0 0 auto}
+.speech .who{font-family:var(--font-mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:2px}
+.speech .say{color:var(--ink)}
+.speech.pop{animation:pop .35s ease}
+@keyframes pop{0%{transform:scale(.97);opacity:.4}100%{transform:scale(1);opacity:1}}
+.speech.bad .who{color:var(--exposed)}
+
+.info-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px}
+.info-cards.three{grid-template-columns:repeat(3,1fr)}
+@media(max-width:980px){.info-cards,.info-cards.three{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.info-cards,.info-cards.three{grid-template-columns:1fr}}
+.icard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;min-height:110px;transition:border-color .35s,background .35s}
+.icard h3{font-size:14px;display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.icard p{font-size:13.5px;color:var(--muted)}
+.icard.sel{border-color:var(--accent);background:#16211C}
+.icard.flash{animation:flash .55s ease}
+@keyframes flash{0%{background:var(--accent-dim)}100%{background:var(--surface)}}
+
+.rt{background:var(--surface2);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:16px}
+.rt-title{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 18px;border-bottom:1px solid var(--line);background:var(--surface)}
+
+/* DH-банки с краской */
+.jar{stroke:rgba(255,255,255,.25);stroke-width:2;transition:fill .7s ease,opacity .5s ease}
+.jar-lbl{font-family:var(--font-mono);font-size:9.5px;fill:var(--muted);text-anchor:middle}
+.house-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5}
+.spy-box{fill:var(--surface2);stroke:var(--exposed);stroke-width:1.5;stroke-dasharray:5 4}
+
+.builder{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:860px){.slots{grid-template-columns:1fr 1fr}}
+.slot{border:2px dashed var(--line);border-radius:12px;padding:16px 12px;min-height:110px;display:flex;flex-direction:column;gap:8px;transition:border-color .3s,background .3s}
+.slot .hint{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.slot .filled{font-size:13.5px;color:var(--ink);font-family:var(--font-mono);background:var(--surface2);border-radius:8px;padding:8px 10px;word-break:break-all}
+.slot.done{border-color:var(--accent);border-style:solid;background:var(--accent-dim)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{font-family:var(--font-mono);font-size:13.5px;background:var(--surface2);color:#BFD4E6;border:1.5px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;transition:border-color .25s,transform .2s,opacity .25s}
+.chip:hover{border-color:var(--accent);transform:translateY(-2px)}
+.chip:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.chip.shake{animation:shake .45s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.builder-done{display:none;margin-top:20px;border-top:1px dashed var(--line);padding-top:18px;font-size:14.5px;color:var(--muted)}
+.builder-done.show{display:block}
+.builder-done b{color:var(--ink)}
+.mini-track{position:relative;height:52px;margin-top:16px;border-bottom:2px solid var(--line);overflow:hidden}
+.mini-pkt{position:absolute;left:-40px;top:12px;width:34px;height:22px;border-radius:6px;background:var(--packet);opacity:0}
+.mini-pkt.go{opacity:1;animation:run 1.6s ease-in forwards}
+@keyframes run{0%{left:-40px}100%{left:105%}}
+.sess{display:flex;justify-content:center;margin-top:18px}
+.sess .card{border:2px solid var(--accent);background:var(--accent-dim);border-radius:14px;padding:16px 22px;text-align:center}
+.sess .cap{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-bottom:8px}
+.sess .core{font-family:var(--font-mono);font-size:13px;color:#ADCBFF;padding:3px 0}
+
+.note{background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 18px;margin-top:20px;font-size:14.5px;color:var(--muted)}
+.note b{color:var(--ink)}
+.note.warn{border-left-color:var(--exposed)}
+
+.quiz{margin-top:28px;display:flex;flex-direction:column;gap:20px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.q h3{font-size:16.5px;margin-bottom:16px;font-weight:600}
+.q label{display:flex;gap:12px;align-items:flex-start;padding:11px 14px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;cursor:pointer;font-size:15px;transition:border-color .25s,background .25s}
+.q label:hover{border-color:var(--muted)}
+.q input{accent-color:var(--accent);margin-top:4px;flex:0 0 auto}
+.q label.right{border-color:var(--accent);background:var(--accent-dim)}
+.q label.wrong{border-color:var(--exposed);background:var(--exposed-dim)}
+.q .expl{display:none;font-size:14px;color:var(--muted);margin-top:10px;padding-top:12px;border-top:1px dashed var(--line)}
+.q.answered .expl{display:block}
+.quiz-score{font-family:var(--font-mono);color:var(--accent);font-size:15px;margin-top:6px;min-height:24px}
+
+footer{border-top:1px solid var(--line);margin-top:80px;padding:44px 0 70px}
+.next-link{display:inline-flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius);padding:16px 26px;font-weight:600;text-decoration:none;transition:transform .3s,box-shadow .3s}
+.next-link:hover{transform:translateX(6px);box-shadow:0 0 26px rgba(53,224,161,.25)}
+.sources{margin-top:34px}
+.sources h3{font-size:15px;margin-bottom:10px;color:var(--muted);font-weight:600}
+.sources li{font-size:14px;color:var(--muted);margin-left:20px;padding:2px 0}
+.sources a{color:#ADCBFF}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
+  html{scroll-behavior:auto}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<nav id="dots" aria-label="Навигация по секциям">
+  <a href="#hero" data-s="hero"></a>
+  <a href="#dh" data-s="dh"></a>
+  <a href="#hs" data-s="hs"></a>
+  <a href="#build" data-s="build"></a>
+  <a href="#quiz" data-s="quiz"></a>
+</nav>
+
+<main>
+
+<!-- ============ HERO ============ -->
+<section id="hero">
+  <svg id="hero-bg" aria-hidden="true"></svg>
+  <div class="hero-badge">Курс «VPN: как это работает» · <b>Модуль 05</b> / 10</div>
+  <h1>Шифрование<br>внутри туннеля</h1>
+  <p class="lead">Провайдер видит только «шум». Разбираем магию замка внутри матрёшки: как двое договариваются о ключе на виду у всего интернета (Diffie-Hellman), зачем handshake и почему украденный ключ не вскроет твои старые переписки.</p>
+  <div class="hero-games">
+    <span>🎨 DH на банках с краской</span><span>🤝 путь рукопожатия со шпионом</span><span>🧩 конструктор сессии</span>
+  </div>
+  <div class="scroll-hint"><span class="arrow">↓</span> Листай — краски уже смешиваются</div>
+</section>
+
+<!-- ============ DH PAINTS ============ -->
+<section id="dh" class="reveal">
+  <div class="kicker">Игра 1 · Diffie-Hellman на красках</div>
+  <h2>Как договориться о секрете на виду у всех</h2>
+  <p>Проблема симметричного шифрования: ключ один на двоих — но как передать его по проводу, который прослушивается? Никак. Зато можно провернуть фокус Diffie-Hellman (DH, обмен ключами Диффи—Хеллмана): обмениваться только <b>смесями</b>, а секретные краски держать дома. Шпион посреди провода видит весь обмен — и остаётся с носом. Жми «Шаг 🎨» и следи за банками.</p>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 430" role="img" aria-label="Diffie-Hellman: две стороны смешивают краски и получают общий секрет на виду у шпиона">
+      <!-- дома -->
+      <rect class="house-box" x="20" y="40" width="250" height="350" rx="14"/>
+      <text class="node-label" x="145" y="72">Вы 🏠</text>
+      <rect class="house-box" x="690" y="40" width="250" height="350" rx="14"/>
+      <text class="node-label" x="815" y="72" style="fill:var(--accent)">VPN-сервер 🛡</text>
+      <!-- провод -->
+      <path class="wire" d="M 270 215 H 690"/>
+      <!-- шпион -->
+      <rect class="spy-box" x="380" y="160" width="200" height="128" rx="12"/>
+      <text class="node-label" x="480" y="188" style="fill:var(--exposed);font-size:13px">Шпион 🕵</text>
+      <text class="node-sub" x="480" y="205">прослушивает провод</text>
+      <circle id="spyO" class="jar" cx="445" cy="240" r="16" style="opacity:0" fill="#F2994C"/>
+      <circle id="spyG" class="jar" cx="515" cy="240" r="16" style="opacity:0" fill="#3FBF6F"/>
+      <text id="spyCam" class="jar-lbl" x="480" y="268" style="opacity:0">📸 записал смеси</text>
+
+      <!-- банки: твоя сторона -->
+      <circle id="jarYC" class="jar" cx="85" cy="130" r="24" style="opacity:0" fill="#F2C94C"/>
+      <text class="jar-lbl" x="85" y="168">общая база</text>
+      <circle id="jarYS" class="jar" cx="205" cy="130" r="24" style="opacity:0" fill="#FF6B57"/>
+      <text class="jar-lbl" x="205" y="168">🔒 твой секрет</text>
+      <circle id="jarYM" class="jar" cx="85" cy="250" r="24" style="opacity:0" fill="#F2994C"/>
+      <text class="jar-lbl" x="85" y="288">твоя смесь (едет)</text>
+      <circle id="jarYR" class="jar" cx="205" cy="250" r="24" style="opacity:0" fill="#3FBF6F"/>
+      <text class="jar-lbl" x="205" y="288">его смесь (приехала)</text>
+      <circle id="jarYF" class="jar" cx="145" cy="345" r="30" style="opacity:0" fill="#9A7B4F"/>
+      <text class="jar-lbl" x="145" y="386">общий секрет</text>
+
+      <!-- банки: сервер -->
+      <circle id="jarSC" class="jar" cx="755" cy="130" r="24" style="opacity:0" fill="#F2C94C"/>
+      <text class="jar-lbl" x="755" y="168">общая база</text>
+      <circle id="jarSS" class="jar" cx="875" cy="130" r="24" style="opacity:0" fill="#58A6FF"/>
+      <text class="jar-lbl" x="875" y="168">🔒 его секрет</text>
+      <circle id="jarSM" class="jar" cx="755" cy="250" r="24" style="opacity:0" fill="#3FBF6F"/>
+      <text class="jar-lbl" x="755" y="288">его смесь (едет)</text>
+      <circle id="jarSR" class="jar" cx="875" cy="250" r="24" style="opacity:0" fill="#F2994C"/>
+      <text class="jar-lbl" x="875" y="288">твоя смесь (приехала)</text>
+      <circle id="jarSF" class="jar" cx="815" cy="345" r="30" style="opacity:0" fill="#9A7B4F"/>
+      <text class="jar-lbl" x="815" y="386">общий секрет</text>
+
+      <!-- летающая банка -->
+      <g id="flyG" style="opacity:0"><circle id="flyC" class="jar" cx="0" cy="0" r="15" fill="#F2994C"/></g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="dhNext">Шаг 🎨</button>
+    <button class="btn ghost" id="dhReset">Сброс</button>
+    <span class="score" id="dhStep"></span>
+  </div>
+  <div class="speech" id="dhSpeech">
+    <span class="ava">🎨</span>
+    <span><span class="who">Криптограф</span><span class="say">На столе — банка общей жёлтой краски: она публичная, секретом не является. Жми «Шаг 🎨» — покажу, как из неё и пары секретных капель рождается ключ, который знает только ваша парочка.</span></span>
+  </div>
+  <div class="note"><b>Математика вместо красок:</b> в реальных протоколах — возведение в степень по модулю огромного числа или точки эллиптической кривой (ECDH; в WireGuard и TLS 1.3 — кривая X25519). Свойство то же: «смешать» легко, «размешать обратно» без секретной части — вычислительно невозможно.</div>
+  <div class="note warn"><b>Одна дыра:</b> DH не проверяет, С КЕМ ты смешиваешь краски. Шпион мог бы встать посреди и смешать отдельно с каждым (MITM, Man-in-the-Middle — «человек посередине»). Поэтому в следующем рукопожатии появится подпись сервера.</div>
+</section>
+
+<!-- ============ HANDSHAKE JOURNEY ============ -->
+<section id="hs" class="reveal">
+  <div class="kicker">Игра 2 · Путь рукопожатия</div>
+  <h2>Handshake: от «привета» до сессионных ключей</h2>
+  <p>Теперь — то же самое, но на проводе. Клиент и VPN-сервер обмениваются приветствиями, смесями и подписями, а шпион записывает всё, что летит. Пройди рукопожатие по шагам: «Авто» или стрелки «‹ Назад» / «Шаг ›». Кликай по узлам — ниже открываются карточки.</p>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 300" role="img" aria-label="Рукопожатие: клиент, шпион-провайдер и VPN-сервер">
+      <path class="wire" d="M 100 150 H 860"/>
+      <g class="node-g" data-node="you" tabindex="0" role="button" aria-label="Вы и VPN-клиент">
+        <rect class="node-box" x="30" y="106" width="140" height="88" rx="12"/>
+        <text class="node-label" x="100" y="144">Вы 🏠</text>
+        <text class="node-sub" x="100" y="164">VPN-клиент</text>
+        <text class="node-sub" x="100" y="178">секрет: красный</text>
+      </g>
+      <g class="node-g" data-node="spy" tabindex="0" role="button" aria-label="Шпион-провайдер">
+        <rect class="node-box" x="410" y="106" width="140" height="88" rx="12" style="stroke:var(--exposed)"/>
+        <text class="node-label" x="480" y="144" style="fill:var(--exposed)">Шпион 🕵</text>
+        <text class="node-sub" x="480" y="164">провайдер (ISP)</text>
+        <text class="node-sub" x="480" y="178">пишет всё, что летит</text>
+      </g>
+      <g class="node-g" data-node="srv" tabindex="0" role="button" aria-label="VPN-сервер">
+        <rect class="node-box" x="790" y="106" width="140" height="88" rx="12" style="stroke:var(--accent)"/>
+        <text class="node-label" x="860" y="144" style="fill:var(--accent)">VPN-сервер 🛡</text>
+        <text class="node-sub" x="860" y="164">есть подпись</text>
+        <text class="node-sub" x="860" y="178">секрет: синий</text>
+      </g>
+      <g id="hsPkt" transform="translate(100,122)">
+        <rect id="hsShell" x="-26" y="-17" width="52" height="34" rx="9" fill="rgba(53,224,161,.15)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 4" style="opacity:0"/>
+        <rect x="-15" y="-11" width="30" height="22" rx="6" fill="var(--packet)"/>
+        <text id="hsLock" x="0" y="4.5" text-anchor="middle" font-size="11" fill="#04120C" style="opacity:0">🔒</text>
+        <text class="pkt-lbl" id="hsLbl" x="0" y="-24"></text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="hsGo">🤝 Авто</button>
+    <button class="btn ghost" id="hsPrev" disabled>‹ Назад</button>
+    <button class="btn ghost" id="hsNext">Шаг ›</button>
+    <span class="score" id="hsStep"></span>
+  </div>
+  <div class="speech" id="hsSpeech">
+    <span class="ava">🏠</span>
+    <span><span class="who">VPN-клиент</span><span class="say">Хочу туннель — но ключ по проводу не повезёшь: шпион запишет. Жми «Авто» — провернём Diffie-Hellman прямо у него на виду.</span></span>
+  </div>
+
+  <div class="info-cards three" id="hsCards">
+    <div class="icard" data-for="you"><h3>🏠 Вы + VPN-клиент</h3><p>Хранит свою секретную «краску» локально и никогда не отправляет её по сети. Знает публичный ключ сервера заранее (или проверяет сертификат) — поэтому точно знает, с кем смешивает.</p></div>
+    <div class="icard" data-for="spy"><h3>🕵 Шпион (ISP)</h3><p>Internet Service Provider — поставщик интернет-услуг. Видит и записывает ВЕСЬ обмен: приветствия, DH-смеси, шифротекст. Но смеси необратимы, а ключей у него нет — остаётся шум, объём и время.</p></div>
+    <div class="icard" data-for="srv"><h3>🛡 VPN-сервер</h3><p>Владеет приватным ключом и подписывает им рукопожатие — доказывает личность. Смешивает краски, выводит сессионные ключи и шифрует ими трафик туннеля.</p></div>
+  </div>
+
+  <div class="note"><b>Ключевая мысль:</b> общий секрет ни разу не ехал по проводу — каждая сторона вычислила его у себя. Шпион записал все банки, но нужного цвета у него нет и смешать его из записанного математически непосильно.</div>
+</section>
+
+<!-- ============ BUILDER ============ -->
+<section id="build" class="reveal">
+  <div class="kicker">Игра 3 · Конструктор сессии</div>
+  <h2>Собери защищённую сессию</h2>
+  <p>Секрет есть — теперь из него надо собрать рабочую сессию. Кликай по деталям в нужные слоты: порядок важен, как в настоящем handshake (TLS, Transport Layer Security — протокол защиты соединений). Одна деталь тут в корне неверная — найдёшь её?</p>
+
+  <div class="builder">
+    <div class="slots">
+      <div class="slot" data-slot="hello"><span class="hint">1 · Приветствие и обмен DH-смесями</span></div>
+      <div class="slot" data-slot="auth"><span class="hint">2 · Аутентификация сервера</span></div>
+      <div class="slot" data-slot="kdf"><span class="hint">3 · Вывод сессионных ключей (KDF)</span></div>
+      <div class="slot" data-slot="aead"><span class="hint">4 · Шифрование данных</span></div>
+    </div>
+    <div class="chips" id="bChips">
+      <button class="chip" data-target="hello">🎨 обменяться публичными DH-смесями</button>
+      <button class="chip" data-target="auth">🪪 проверить подпись / сертификат сервера</button>
+      <button class="chip" data-target="kdf">🌀 пропустить общий секрет через KDF</button>
+      <button class="chip" data-target="aead">🔐 шифровать пакеты AEAD-ключами</button>
+      <button class="chip" data-target="shout">📢 прокричать симметричный ключ по открытому каналу</button>
+    </div>
+    <div class="speech" id="bSpeech" style="margin-top:18px">
+      <span class="ava">🧩</span>
+      <span><span class="who">Криптограф</span><span class="say">Четыре шага — и туннель под замком. Собери цепочку, а одну деталь заверни: она из мира, где криптографии не существует 😏</span></span>
+    </div>
+    <div class="builder-done" id="bDone">
+      <b>Сессия собрана! 🔐</b> Вот что получилось в разрезе — снаружи шум, внутри твои данные, а ключи одноразовые и регулярно меняются (rekeying):
+      <div class="sess">
+        <div class="card">
+          <div class="cap">сессия туннеля · ты ↔ VPN-сервер</div>
+          <div class="core">🎨 общий секрет: «оливковый» (по проводу не ездил)</div>
+          <div class="core">🌀 KDF → ключ шифрования «туда» + «обратно» + целостность</div>
+          <div class="core">🔐 данные: AEAD-шифротекст (подделка пакета = сразу видно)</div>
+        </div>
+      </div>
+      <div class="mini-track"><div class="mini-pkt" id="bMini"></div></div>
+      <div class="btn-row">
+        <button class="btn" id="bSend">Отправить пакет сквозь шум 🚀</button>
+        <button class="btn ghost" id="bReset">Собрать заново</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="note"><b>Forward secrecy (совершенство вперёд):</b> DH-ключи одноразовые — сгенерированы для этой сессии и удалены после. Украдут завтра приватный ключ сервера — старые записи туннеля всё равно не расшифровать: тех «оливковых» секретов больше нет ни у кого. Стратегия «записать сейчас, расшифровать потом» ломается об это.</div>
+</section>
+
+<!-- ============ QUIZ ============ -->
+<section id="quiz" class="reveal">
+  <div class="kicker">Проверка</div>
+  <h2>Мини-квиз: ключ на замке?</h2>
+  <div class="quiz" id="quizBox"></div>
+  <div class="quiz-score" id="quizScore"></div>
+</section>
+
+<footer>
+  <a class="next-link" href="./06-protokoly-vpn.html">Дальше: протоколы VPN <span>→</span></a>
+  <div class="sources">
+    <h3>Источники</h3>
+    <ul>
+      <li>RFC 8446 — TLS 1.3 (handshake, forward secrecy): <a href="https://datatracker.ietf.org/doc/html/rfc8446">datatracker.ietf.org/doc/html/rfc8446</a></li>
+      <li>RFC 7748 — X25519/X448 (кривые для DH): <a href="https://datatracker.ietf.org/doc/html/rfc7748">datatracker.ietf.org/doc/html/rfc7748</a></li>
+      <li>RFC 2631 — Diffie-Hellman Key Agreement Method: <a href="https://datatracker.ietf.org/doc/html/rfc2631">datatracker.ietf.org/doc/html/rfc2631</a></li>
+      <li>RFC 8439 — ChaCha20 и Poly1305 (AEAD): <a href="https://datatracker.ietf.org/doc/html/rfc8439">datatracker.ietf.org/doc/html/rfc8439</a></li>
+      <li>WireGuard Whitepaper (Noise_IK, X25519, ChaCha20-Poly1305): <a href="https://www.wireguard.com/papers/wireguard.pdf">wireguard.com/papers/wireguard.pdf</a></li>
+      <li>The Noise Protocol Framework: <a href="https://noiseprotocol.org/noise.html">noiseprotocol.org</a></li>
+      <li>Public-key cryptography — MDN Glossary: <a href="https://developer.mozilla.org/en-US/docs/Glossary/Public-key_cryptography">developer.mozilla.org</a></li>
+    </ul>
+  </div>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:30px;font-family:var(--font-mono)">documents_hub / vpn · модуль 05 · статус: final</p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, RM ? Math.min(ms, 300) : ms));
+
+/* ================= reveal / progress / dots ================= */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+const sections = [...document.querySelectorAll('section')];
+const dots = [...document.querySelectorAll('#dots a')];
+function onScroll(){
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  let cur = sections[0].id;
+  for (const s of sections){ if (s.getBoundingClientRect().top < innerHeight * 0.4) cur = s.id; }
+  dots.forEach(d => d.classList.toggle('on', d.dataset.s === cur));
+}
+addEventListener('scroll', onScroll, { passive:true }); onScroll();
+
+/* ================= helpers ================= */
+function speak(strip, ava, who, text, bad){
+  strip.className = 'speech pop' + (bad ? ' bad' : '');
+  strip.innerHTML = '';
+  const a = document.createElement('span'); a.className = 'ava'; a.textContent = ava;
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
+  const s = document.createElement('span'); s.className = 'say'; s.textContent = text;
+  const wrap = document.createElement('span'); wrap.appendChild(w); wrap.appendChild(s);
+  strip.appendChild(a); strip.appendChild(wrap);
+}
+function movePkt(g, from, to, dur, cancelFn){
+  return new Promise(res => {
+    const t0 = performance.now();
+    if (RM){ g.setAttribute('transform', `translate(${to[0]},${to[1]})`); res(); return; }
+    function step(now){
+      if (cancelFn && cancelFn()){ res(); return; }
+      const k = Math.min((now - t0) / dur, 1);
+      const x = from[0] + (to[0] - from[0]) * k;
+      const y = from[1] + (to[1] - from[1]) * k;
+      g.setAttribute('transform', `translate(${x},${y})`);
+      if (k < 1) requestAnimationFrame(step); else res();
+    }
+    requestAnimationFrame(step);
+  });
+}
+function showJar(id, on){ document.getElementById(id).style.opacity = on ? 1 : 0; }
+
+/* ================= game 1: DH paints ================= */
+(function dhGame(){
+  const strip = document.getElementById('dhSpeech');
+  const btn = document.getElementById('dhNext');
+  const resetBtn = document.getElementById('dhReset');
+  const counter = document.getElementById('dhStep');
+  const flyG = document.getElementById('flyG');
+  const flyC = document.getElementById('flyC');
+  let busy = false, idx = 0;
+
+  const ORANGE = '#F2994C', GREEN = '#3FBF6F';
+
+  function flyJar(from, to, color){
+    flyC.style.fill = color;
+    flyG.style.opacity = 1;
+    flyG.setAttribute('transform', `translate(${from[0]},${from[1]})`);
+    return movePkt(flyG, from, to, 1100).then(() => { flyG.style.opacity = 0; });
+  }
+
+  const STEPS = [
+    { say: ['🎨','Криптограф','Шаг 1. Общая база — жёлтая краска. Она ПУБЛИЧНАЯ: её видят все, включая шпиона. Секретом она не является — и не должна.'],
+      run: () => { showJar('jarYC', true); showJar('jarSC', true); } },
+    { say: ['🏠','Вы','Шаг 2. Тайком добавляю в свою банку КРАСНЫЙ. Получилась оранжевая смесь. Красный остаётся дома — по проводу он не поедет никогда.'],
+      run: () => { showJar('jarYS', true); showJar('jarYM', true); } },
+    { say: ['🛡','VPN-сервер','Шаг 3. А я тайком добавляю СИНИЙ — у меня зелёная смесь. Синий тоже остаётся дома.'],
+      run: () => { showJar('jarSS', true); showJar('jarSM', true); } },
+    { say: ['🕵','Шпион','Шаг 4. Обмен! Оранжевая банка поехала к серверу, зелёная — к тебе. Я записал обе 📸. Но краски не разбираются обратно: из смеси жёлтый+красный красный не вычесть.'],
+      run: async () => {
+        showJar('spyO', true); showJar('spyG', true); showJar('spyCam', true);
+        await flyJar([85,250], [445,190], ORANGE);
+        await flyJar([445,190], [875,250], ORANGE);
+        showJar('jarSR', true);
+        await flyJar([755,250], [515,190], GREEN);
+        await flyJar([515,190], [205,250], GREEN);
+        showJar('jarYR', true);
+      } },
+    { say: ['🎨','Криптограф','Шаг 5. Финальное смешивание: ты льёшь свою красную каплю в его зелёную смесь, сервер — свою синюю в твою оранжевую. У обоих получился ОДИН цвет: «оливковый».'],
+      run: async () => {
+        showJar('jarYF', true); showJar('jarSF', true);
+      } },
+    { say: ['🕵','Шпион','Шаг 6. У меня жёлтый, оранжевый и зелёный. Нужного «оливкового» нет, и из того, что я видел, он не смешивается. Математика меня победила…'],
+      run: () => {},
+      last: true }
+  ];
+
+  function updateCounter(){ counter.textContent = `шаг ${idx} из ${STEPS.length}`; }
+  function updateBtn(){
+    btn.disabled = false;
+    btn.textContent = idx >= STEPS.length ? '🎨 Всё смешано' : 'Шаг 🎨';
+    if (idx >= STEPS.length) btn.disabled = true;
+  }
+
+  btn.addEventListener('click', async () => {
+    if (busy || idx >= STEPS.length) return;
+    busy = true; btn.disabled = true;
+    const st = STEPS[idx];
+    speak(strip, st.say[0], st.say[1], st.say[2]);
+    idx++; updateCounter();
+    await st.run();
+    if (st.last) btn.textContent = '🎨 Всё смешано';
+    busy = false; updateBtn();
+  });
+
+  function reset(){
+    idx = 0;
+    ['jarYS','jarSC','jarYM','jarYR','jarYF','jarSS','jarSM','jarSR','jarSF','spyO','spyG','spyCam'].forEach(id => showJar(id, false));
+    showJar('jarYC', false);
+    flyG.style.opacity = 0;
+    counter.textContent = '';
+    speak(strip, '🎨', 'Криптограф', 'На столе — банка общей жёлтой краски: она публичная, секретом не является. Жми «Шаг 🎨» — покажу, как из неё и пары секретных капель рождается ключ, который знает только ваша парочка.');
+    updateBtn();
+    updateCounter();
+    counter.textContent = `шаг 0 из ${STEPS.length}`;
+  }
+  resetBtn.addEventListener('click', () => { if (!busy) reset(); });
+  reset();
+})();
+
+/* ================= game 2: handshake journey ================= */
+(function handshake(){
+  const pkt = document.getElementById('hsPkt');
+  const shell = document.getElementById('hsShell');
+  const lock = document.getElementById('hsLock');
+  const lbl = document.getElementById('hsLbl');
+  const btn = document.getElementById('hsGo');
+  const prevBtn = document.getElementById('hsPrev');
+  const nextBtn = document.getElementById('hsNext');
+  const counter = document.getElementById('hsStep');
+  const strip = document.getElementById('hsSpeech');
+  const intro = strip.innerHTML;
+  const START = [100,122];
+  let running = false, autoCancel = false, busy = false, idx = -1, cur = START.slice();
+
+  const steps = [
+    { p:[100,122], l:'привет + DH-смесь 🔓', sh:false, lk:false, ava:'🏠', who:'Вы',
+      say:'Привет, сервер! Хочу туннель. Вот моя публичная DH-смесь (жёлтый + мой красный). Секретный красный остаётся дома — по проводу не едет.' },
+    { p:[480,122], l:'📸 записал смесь', sh:false, lk:false, ava:'🕵', who:'Шпион',
+      say:'Какая-то банка поехала… Записал 📸. Но это просто публичная смесь: секретную краску из неё не вынуть.' },
+    { p:[860,122], l:'привет + смесь + 🪪', sh:false, lk:false, ava:'🛡', who:'VPN-сервер',
+      say:'Привет! Вот моя смесь (жёлтый + синий) и ПОДПИСЬ моим приватным ключом: я — настоящий сервер, а не кто-то, кто встал посреди провода.' },
+    { p:[480,122], l:'📸 и обратную тоже', sh:false, lk:false, ava:'🕵', who:'Шпион',
+      say:'Обратная банка… и тоже записана. Подпись подделать не могу — приватного ключа сервера у меня нет.' },
+    { p:[100,122], l:'оливковый секрет 🎨', sh:false, lk:false, ava:'🏠', who:'Вы',
+      say:'Подпись проверил — собеседник настоящий. Смешиваю: жёлтый + мой красный + его синий. Получился «оливковый» — общий секрет! По проводу он не ездил: я вычислил его сам.' },
+    { p:[860,122], l:'KDF → ключи 🔑', sh:false, lk:false, ava:'🛡', who:'VPN-сервер',
+      say:'У меня тот же «оливковый». Пропускаю его через KDF (Key Derivation Function — функция вывода ключей): отдельные ключи для шифрования «туда», «обратно» и проверки целостности.' },
+    { p:[480,122], l:'шифротекст 🔒', sh:true, lk:true, ava:'🕵', who:'Шпион',
+      say:'Полетели данные… и это просто шум. Ни сайтов, ни содержимого — только объём и время. Вот и вся моя прослушка.' },
+    { p:[100,122], l:'сессия 🔐', sh:true, lk:true, ava:'🏠', who:'Вы',
+      say:'Сессия работает! Ключи одноразовые и регулярно меняются (rekeying). Украдут когда-нибудь ключ сервера — мои старые записи всё равно не прочитать: forward secrecy.' }
+  ];
+
+  function applyStep(i){
+    const st = steps[i];
+    speak(strip, st.ava, st.who, st.say);
+    lbl.textContent = st.l;
+    shell.style.opacity = st.sh ? 1 : 0;
+    lock.style.opacity = st.lk ? 1 : 0;
+    counter.textContent = `шаг ${i+1} из ${steps.length}`;
+    prevBtn.disabled = i <= 0;
+    nextBtn.disabled = i >= steps.length - 1;
+  }
+  function resetToStart(){
+    idx = -1; cur = START.slice();
+    pkt.setAttribute('transform', `translate(${cur[0]},${cur[1]})`);
+    shell.style.opacity = 0; lock.style.opacity = 0; lbl.textContent = '';
+    strip.innerHTML = intro;
+    counter.textContent = `шаг 0 из ${steps.length}`;
+    prevBtn.disabled = true; nextBtn.disabled = false;
+  }
+  async function goto(i){
+    busy = true;
+    await movePkt(pkt, cur, steps[i].p, 950, () => autoCancel);
+    cur = steps[i].p.slice();
+    if (autoCancel){ busy = false; return; }
+    idx = i; busy = false;
+    applyStep(i);
+  }
+  async function arrow(dir){
+    if (running) autoCancel = true;
+    while (busy || running) await sleep(60);
+    autoCancel = false;
+    const t = idx + dir;
+    if (t < 0 || t >= steps.length) return;
+    await goto(t);
+  }
+  prevBtn.addEventListener('click', () => arrow(-1));
+  nextBtn.addEventListener('click', () => arrow(1));
+
+  document.querySelectorAll('#hs .node-g[data-node]').forEach(g => {
+    const act = () => {
+      document.querySelectorAll('#hs .node-g').forEach(x => x.classList.remove('sel'));
+      g.classList.add('sel');
+      const card = document.querySelector(`#hsCards .icard[data-for="${g.dataset.node}"]`);
+      if (card){
+        document.querySelectorAll('#hsCards .icard.sel').forEach(x => x.classList.remove('sel'));
+        card.classList.add('sel');
+        card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+        card.scrollIntoView({ block:'nearest', behavior:'smooth' });
+      }
+    };
+    g.addEventListener('click', act);
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); act(); } });
+  });
+
+  btn.addEventListener('click', async () => {
+    if (running) return;
+    if (idx >= steps.length - 1) resetToStart();
+    running = true; autoCancel = false; btn.disabled = true;
+    while (!autoCancel && idx < steps.length - 1){
+      await goto(idx + 1);
+      if (autoCancel) break;
+      for (let w = 0; w < 2000 && !autoCancel; w += 60) await sleep(60);
+    }
+    running = false; btn.disabled = false;
+    btn.textContent = idx >= steps.length - 1 ? '🤝 Ещё разок' : '🤝 Авто';
+    prevBtn.disabled = idx <= 0; nextBtn.disabled = idx >= steps.length - 1;
+  });
+
+  resetToStart();
+})();
+
+/* ================= game 3: session builder ================= */
+(function sessBuilder(){
+  const strip = document.getElementById('bSpeech');
+  const done = document.getElementById('bDone');
+  const chips = [...document.querySelectorAll('#bChips .chip')];
+  let filled = 0;
+
+  const GOOD = {
+    hello: 'Шаг 1: стороны здороваются и обмениваются публичными DH-смесями. Секретные части не едут по проводу — шпион записывает только «банки».',
+    auth: 'Шаг 2: клиент проверяет подпись сервера (сертификат или закреплённый публичный ключ). Без этого шага DH уязвим к «человеку посередине».',
+    kdf:   'Шаг 3: общий секрет пропускают через KDF — «мясорубку», которая делает из одного секрета набор независимых ключей: шифрование туда/обратно и целостность.',
+    aead:  'Шаг 4: данные шифруются AEAD (Authenticated Encryption with Associated Data): каждый пакет несёт код подлинности — подмену сразу видно.'
+  };
+
+  chips.forEach(c => c.addEventListener('click', () => {
+    const t = c.dataset.target;
+    if (t === 'shout'){
+      c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
+      speak(strip, '📢', 'Прокричать ключ?', 'И шпион запишет его вместе со всеми банками 😄 В этом и смысл DH: ключ НЕ передают — его выводят обе стороны независимо, из публичных данных.', true);
+      return;
+    }
+    const slot = document.querySelector(`.slot[data-slot="${t}"]`);
+    if (!slot || slot.classList.contains('done')) return;
+    slot.classList.add('done');
+    const d = document.createElement('div'); d.className = 'filled'; d.textContent = c.textContent.replace(/^[^\s]+\s/, '');
+    slot.appendChild(d);
+    c.disabled = true; filled++;
+    speak(strip, '🧩', 'Шаг на месте', GOOD[t]);
+    if (filled === 4){
+      done.classList.add('show');
+      speak(strip, '🔐', 'Криптограф', 'Сессия собрана! Смотри, как она выглядит в разрезе, и жми «Отправить пакет сквозь шум».');
+    }
+  }));
+
+  document.getElementById('bSend').addEventListener('click', () => {
+    const p = document.getElementById('bMini');
+    p.classList.remove('go'); void p.offsetWidth; p.classList.add('go');
+    speak(strip, '🚀', 'Пакет улетел', 'Для провайдера это случайные байты: ни доменов, ни содержимого. Математика на страже — ключей у чужих нет.');
+  });
+
+  document.getElementById('bReset').addEventListener('click', () => {
+    filled = 0;
+    document.querySelectorAll('#build .slot').forEach(s => { s.classList.remove('done'); s.querySelector('.filled')?.remove(); });
+    chips.forEach(c => c.disabled = false);
+    done.classList.remove('show');
+    document.getElementById('bMini').classList.remove('go');
+    speak(strip, '🧩', 'Криптограф', 'Четыре шага — и туннель под замком. Собери цепочку, а одну деталь заверни: она из мира, где криптографии не существует 😏');
+  });
+})();
+
+/* ================= quiz ================= */
+(function quiz(){
+  const QUIZ = [
+    { q: 'Почему весь трафик туннеля НЕ шифруют асимметричной криптографией?',
+      a: ['Потому что она менее стойкая', 'Потому что она в сотни раз медленнее — ею только договариваются о ключах', 'Так исторически сложилось, технически разницы нет'], right: 1,
+      ex: 'Гибридная схема: асимметричная криптография (DH, подписи) — один раз в рукопожатии, симметричная (ChaCha20, AES) — на каждый пакет, потому что быстрая.' },
+    { q: 'Шпион записал весь обмен Diffie-Hellman. Что он сможет прочитать?',
+      a: ['Всё — смеси обратимы, нужно время', 'Ничего: из публичных смесей общий секрет не вычисляется', 'Только данные, зашифрованные симметричным ключом'], right: 1,
+      ex: 'Свойство DH: «смешать» легко, «размешать обратно» без секретной части — вычислительно невозможно. Шпион остаётся с публичными банками.' },
+    { q: 'Зачем в рукопожатии нужна подпись или сертификат сервера?',
+      a: ['Чтобы ускорить обмен ключами', 'Чтобы зашифровать данные сервера', 'Чтобы клиент понял: он смешивает краски с настоящим сервером, а не со шпионом посередине'], right: 2,
+      ex: 'Сам по себе DH не проверяет личность — без аутентификации возможен MITM: шпион смешивает краски отдельно с каждым и читает всё. Подпись приватным ключом закрывает эту дыру.' },
+    { q: 'Что видит провайдер внутри работающего туннеля?',
+      a: ['Шум: только объём и время передачи пакетов', 'Домены, которые ты открываешь', 'Содержимое пакетов, но с задержкой'], right: 0,
+      ex: 'Шифротекст выглядит как случайные байты. Остаются метаданные внешнего конверта: кто, кому, сколько и когда. Именно с ними воюют DPI-обходчики (модуль 06).' },
+    { q: 'Завтра злоумышленник украл приватный ключ VPN-сервера. Расшифрует ли он записанный вчера трафик туннеля?',
+      a: ['Да — приватный ключ открывает всё', 'Нет, если сессии используют forward secrecy: одноразовые DH-ключи удалены вместе с сессиями', 'Только если записей мало'], right: 1,
+      ex: 'Forward secrecy: общий секрет каждой сессии выводился из одноразовых ключей, которых больше нет ни у кого. Кража долгосрочного ключа помогает лишь выдавать себя за сервер в НОВЫХ сессиях.' }
+  ];
+  const qBox = document.getElementById('quizBox');
+  let answered = 0, correct = 0;
+  QUIZ.forEach((item, qi) => {
+    const d = document.createElement('div'); d.className = 'q reveal';
+    const h = document.createElement('h3'); h.textContent = `Вопрос ${qi+1}. ${item.q}`;
+    d.appendChild(h);
+    item.a.forEach((txt, ai) => {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="radio" name="q${qi}" value="${ai}"><span>${txt}</span>`;
+      l.querySelector('input').addEventListener('change', () => {
+        if (d.classList.contains('answered')) return;
+        d.classList.add('answered');
+        const labels = [...d.querySelectorAll('label')];
+        labels[item.right].classList.add('right');
+        if (ai !== item.right) labels[ai].classList.add('wrong'); else correct++;
+        answered++;
+        const ex = document.createElement('div'); ex.className = 'expl'; ex.textContent = item.ex; d.appendChild(ex);
+        labels.forEach(x => x.querySelector('input').disabled = true);
+        document.getElementById('quizScore').textContent = answered === QUIZ.length ? `Результат: ${correct} / ${QUIZ.length}` : '';
+      });
+      d.appendChild(l);
+    });
+    qBox.appendChild(d);
+    io.observe(d);
+  });
+})();
+
+/* ================= hero background ================= */
+(function heroBg(){
+  if (RM) return;
+  const svg = document.getElementById('hero-bg');
+  svg.setAttribute('viewBox','0 0 1060 600'); svg.setAttribute('preserveAspectRatio','xMidYMid slice');
+  for (let i = 0; i < 14; i++){
+    const y = 30 + Math.random() * 540, dur = 9 + Math.random() * 14, delay = -Math.random() * dur;
+    const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x','-30'); r.setAttribute('y', y); r.setAttribute('width', 16 + Math.random()*22);
+    r.setAttribute('height','5'); r.setAttribute('rx','2.5');
+    r.setAttribute('fill', Math.random() < .3 ? 'var(--accent)' : 'var(--line)');
+    r.style.opacity = .25 + Math.random()*.4;
+    const a = document.createElementNS('http://www.w3.org/2000/svg','animate');
+    a.setAttribute('attributeName','x'); a.setAttribute('from','-40'); a.setAttribute('to','1100');
+    a.setAttribute('dur', dur + 's'); a.setAttribute('begin', delay + 's'); a.setAttribute('repeatCount','indefinite');
+    r.appendChild(a); svg.appendChild(r);
+  }
+})();
+</script>
+</body>
+</html>

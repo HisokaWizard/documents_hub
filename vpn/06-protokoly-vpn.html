@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Модуль 06 · Протоколы VPN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0E13;
+  --surface:#111823;
+  --surface2:#18212E;
+  --line:#232F3F;
+  --ink:#E8EEF4;
+  --muted:#8A97A4;
+  --accent:#35E0A1;
+  --accent-dim:rgba(53,224,161,.14);
+  --exposed:#FF7A6B;
+  --exposed-dim:rgba(255,122,107,.13);
+  --packet:#58A6FF;
+  --radius:14px;
+  --font-head:'Unbounded',system-ui,sans-serif;
+  --font-body:'Golos Text',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:#04120C}
+
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:100;transition:width .15s linear}
+#dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;z-index:90}
+#dots a{width:9px;height:9px;border-radius:50%;background:var(--line);display:block;transition:all .3s}
+#dots a.on{background:var(--accent);transform:scale(1.45)}
+@media(max-width:900px){#dots{display:none}}
+
+main{max-width:1060px;margin:0 auto;padding:0 28px}
+section{padding:96px 0 40px;min-height:60vh}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:none}
+.kicker{font-family:var(--font-mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1{font-family:var(--font-head);font-weight:800;font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.01em}
+h2{font-family:var(--font-head);font-weight:600;font-size:clamp(22px,3.2vw,32px);line-height:1.25;margin-bottom:18px}
+h3{font-size:17px;font-weight:700}
+p.lead{color:var(--muted);font-size:19px;max-width:680px;margin-top:18px}
+p+p{margin-top:14px}
+.term{color:var(--accent);font-weight:600}
+code,.mono{font-family:var(--font-mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:#BFD4E6}
+
+#hero{min-height:92vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+#hero-bg{position:absolute;inset:0;pointer-events:none;opacity:.5}
+.hero-badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;margin-bottom:26px;width:max-content}
+.hero-badge b{color:var(--accent);font-weight:600}
+.scroll-hint{margin-top:56px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:10px}
+.scroll-hint .arrow{display:inline-block;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+.hero-games{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.hero-games span{font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--surface)}
+
+.scene-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:26px;position:relative}
+.scene-svg{width:100%;height:auto;display:block}
+.node-g{cursor:pointer}
+.node-g .node-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .3s,fill .3s}
+.node-g:hover .node-box,.node-g.sel .node-box{stroke:var(--accent)}
+.node-g.sel .node-box{fill:#16211C}
+.node-label{font-family:var(--font-body);font-size:14px;font-weight:600;fill:var(--ink);text-anchor:middle}
+.node-sub{font-family:var(--font-mono);font-size:10px;fill:var(--muted);text-anchor:middle}
+.wire{stroke:var(--line);stroke-width:2;fill:none}
+.pkt-lbl{font-family:var(--font-mono);font-size:9.5px;fill:#ADCBFF;text-anchor:middle}
+.node-g:focus{outline:none}
+.node-g:focus-visible .node-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+.cable-g{cursor:pointer}
+.cable-g:focus{outline:none}
+.cable-g:focus-visible .out-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+.cable-hit{stroke:transparent;stroke-width:30;fill:none}
+.cable{stroke:var(--line);stroke-width:2.5;fill:none;transition:stroke .25s}
+.cable-g:hover .cable,.cable-g.ok .cable{stroke:var(--accent)}
+.cable-g.err .cable{stroke:var(--exposed)}
+.cable-g.err{animation:shake .45s ease}
+.out-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .25s}
+.cable-g:hover .out-box{stroke:var(--accent)}
+
+.btn{display:inline-flex;align-items:center;gap:9px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:11px;padding:11px 20px;font-family:var(--font-body);font-size:15px;font-weight:600;cursor:pointer;transition:transform .25s,box-shadow .25s,opacity .25s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 0 20px rgba(53,224,161,.22)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.btn.ghost{background:none;border-color:var(--line);color:var(--muted)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
+.score{font-family:var(--font-mono);font-size:14px;color:var(--accent)}
+
+.speech{display:flex;gap:13px;align-items:flex-start;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:13px 17px;margin-top:16px;font-size:15px;min-height:56px;line-height:1.5}
+.speech .ava{font-size:22px;line-height:1.2;flex:0 0 auto}
+.speech .who{font-family:var(--font-mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:2px}
+.speech .say{color:var(--ink)}
+.speech.pop{animation:pop .35s ease}
+@keyframes pop{0%{transform:scale(.97);opacity:.4}100%{transform:scale(1);opacity:1}}
+.speech.bad .who{color:var(--exposed)}
+
+.info-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px}
+.info-cards.three{grid-template-columns:repeat(3,1fr)}
+@media(max-width:980px){.info-cards,.info-cards.three{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.info-cards,.info-cards.three{grid-template-columns:1fr}}
+.icard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;min-height:110px;transition:border-color .35s,background .35s}
+.icard h3{font-size:14px;display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.icard p{font-size:13.5px;color:var(--muted)}
+.icard.sel{border-color:var(--accent);background:#16211C}
+.icard.flash{animation:flash .55s ease}
+@keyframes flash{0%{background:var(--accent-dim)}100%{background:var(--surface)}}
+
+.rt{background:var(--surface2);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:16px}
+.rt-title{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 18px;border-bottom:1px solid var(--line);background:var(--surface)}
+.rt-row{display:grid;gap:10px;padding:10px 18px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border-bottom:1px solid var(--line)}
+.rt-row:last-child{border-bottom:none}
+.rt-row .dst{color:var(--ink)}
+.rt-row.hl{color:var(--accent)}
+.rt-row.hl .dst{color:var(--accent)}
+.rt-row.dead{color:var(--exposed)}
+.rt-row.dead .dst{color:var(--exposed)}
+.rt-row.new{animation:pop .45s ease}
+.rt-3col{grid-template-columns:.95fr 1.25fr 1.25fr}
+@media(max-width:760px){.rt-3col{grid-template-columns:1fr}}
+
+.builder{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:860px){.slots{grid-template-columns:1fr 1fr}}
+.slot{border:2px dashed var(--line);border-radius:12px;padding:16px 12px;min-height:110px;display:flex;flex-direction:column;gap:8px;transition:border-color .3s,background .3s}
+.slot .hint{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.slot .filled{font-size:13.5px;color:var(--ink);font-family:var(--font-mono);background:var(--surface2);border-radius:8px;padding:8px 10px;word-break:break-all}
+.slot.done{border-color:var(--accent);border-style:solid;background:var(--accent-dim)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{font-family:var(--font-mono);font-size:13.5px;background:var(--surface2);color:#BFD4E6;border:1.5px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;transition:border-color .25s,transform .2s,opacity .25s}
+.chip:hover{border-color:var(--accent);transform:translateY(-2px)}
+.chip:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.chip.shake{animation:shake .45s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.builder-done{display:none;margin-top:20px;border-top:1px dashed var(--line);padding-top:18px;font-size:14.5px;color:var(--muted)}
+.builder-done.show{display:block}
+.builder-done b{color:var(--ink)}
+.conf{font-family:var(--font-mono);font-size:13px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-top:14px;color:#BFD4E6;line-height:1.8;overflow-x:auto;white-space:pre}
+.conf .sec{color:var(--accent)}
+.conf .cmt{color:var(--muted)}
+.mini-track{position:relative;height:52px;margin-top:16px;border-bottom:2px solid var(--line);overflow:hidden}
+.mini-pkt{position:absolute;left:-40px;top:12px;width:34px;height:22px;border-radius:6px;background:var(--packet);opacity:0}
+.mini-pkt.go{opacity:1;animation:run 1.6s ease-in forwards}
+@keyframes run{0%{left:-40px}100%{left:105%}}
+
+.note{background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 18px;margin-top:20px;font-size:14.5px;color:var(--muted)}
+.note b{color:var(--ink)}
+.note.warn{border-left-color:var(--exposed)}
+
+.quiz{margin-top:28px;display:flex;flex-direction:column;gap:20px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.q h3{font-size:16.5px;margin-bottom:16px;font-weight:600}
+.q label{display:flex;gap:12px;align-items:flex-start;padding:11px 14px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;cursor:pointer;font-size:15px;transition:border-color .25s,background .25s}
+.q label:hover{border-color:var(--muted)}
+.q input{accent-color:var(--accent);margin-top:4px;flex:0 0 auto}
+.q label.right{border-color:var(--accent);background:var(--accent-dim)}
+.q label.wrong{border-color:var(--exposed);background:var(--exposed-dim)}
+.q .expl{display:none;font-size:14px;color:var(--muted);margin-top:10px;padding-top:12px;border-top:1px dashed var(--line)}
+.q.answered .expl{display:block}
+.quiz-score{font-family:var(--font-mono);color:var(--accent);font-size:15px;margin-top:6px;min-height:24px}
+
+footer{border-top:1px solid var(--line);margin-top:80px;padding:44px 0 70px}
+.next-link{display:inline-flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius);padding:16px 26px;font-weight:600;text-decoration:none;transition:transform .3s,box-shadow .3s}
+.next-link:hover{transform:translateX(6px);box-shadow:0 0 26px rgba(53,224,161,.25)}
+.sources{margin-top:34px}
+.sources h3{font-size:15px;margin-bottom:10px;color:var(--muted);font-weight:600}
+.sources li{font-size:14px;color:var(--muted);margin-left:20px;padding:2px 0}
+.sources a{color:#ADCBFF}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
+  html{scroll-behavior:auto}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<nav id="dots" aria-label="Навигация по секциям">
+  <a href="#hero" data-s="hero"></a>
+  <a href="#race" data-s="race"></a>
+  <a href="#disp" data-s="disp"></a>
+  <a href="#wg" data-s="wg"></a>
+  <a href="#quiz" data-s="quiz"></a>
+</nav>
+
+<main>
+
+<!-- ============ HERO ============ -->
+<section id="hero">
+  <svg id="hero-bg" aria-hidden="true"></svg>
+  <div class="hero-badge">Курс «VPN: как это работает» · <b>Модуль 06</b> / 10</div>
+  <h1>Протоколы VPN:<br>кто быстрее, кто хитрее</h1>
+  <p class="lead">OpenVPN, WireGuard, IPsec/IKEv2, Shadowsocks/VLESS — все строят туннели, но по-разному. Одни ставят на скорость, другие на совместимость, третьи на маскировку. Разбираем устройство, гоняем трафик сквозь цензора и учимся выбирать протокол под задачу.</p>
+  <div class="hero-games">
+    <span>🛰 гонка сквозь цензора</span><span>🕹 диспетчер протоколов</span><span>🧩 конструктор WireGuard</span>
+  </div>
+  <div class="scroll-hint"><span class="arrow">↓</span> Листай — цензор уже греет DPI</div>
+</section>
+
+<!-- ============ RACE ============ -->
+<section id="race" class="reveal">
+  <div class="kicker">Игра 1 · Гонка сквозь цензора</div>
+  <h2>Кто пройдёт через DPI?</h2>
+  <p>Один и тот же путь: ты → цензор с DPI (Deep Packet Inspection — глубокий анализ трафика) → сервер. Выбери протокол и пройди маршрут по шагам: «Авто» или стрелки «‹ Назад» / «Шаг ›». Спойлер: итог у всех разный. Кликай по узлам — ниже открываются карточки.</p>
+
+  <div class="btn-row" id="protoRow" role="group" aria-label="Выбор протокола">
+    <button class="btn ghost" data-proto="wg">🚀 WireGuard</button>
+    <button class="btn ghost" data-proto="ovpn">🛠 OpenVPN · TCP/443</button>
+    <button class="btn ghost" data-proto="vless">🎭 VLESS + Reality</button>
+  </div>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 300" role="img" aria-label="Путь пакета через цензора с DPI к серверу">
+      <path class="wire" d="M 100 150 H 860"/>
+      <g class="node-g" data-node="you" tabindex="0" role="button" aria-label="Вы и VPN-клиент">
+        <rect class="node-box" x="30" y="106" width="140" height="88" rx="12"/>
+        <text class="node-label" x="100" y="144">Вы 🏠</text>
+        <text class="node-sub" x="100" y="164">VPN-клиент</text>
+        <text class="node-sub" x="100" y="178">протокол выбираешь ты</text>
+      </g>
+      <g class="node-g" data-node="censor" tabindex="0" role="button" aria-label="Цензор с DPI">
+        <rect class="node-box" x="410" y="106" width="140" height="88" rx="12" style="stroke:var(--exposed)"/>
+        <text class="node-label" x="480" y="144" style="fill:var(--exposed)">Цензор 🕵</text>
+        <text class="node-sub" x="480" y="164">DPI на проводе</text>
+        <text class="node-sub" x="480" y="178">нюхает каждый пакет</text>
+      </g>
+      <g class="node-g" data-node="srv" tabindex="0" role="button" aria-label="VPN или прокси-сервер">
+        <rect class="node-box" x="790" y="106" width="140" height="88" rx="12" style="stroke:var(--accent)"/>
+        <text class="node-label" x="860" y="144" style="fill:var(--accent)">Сервер 🛡</text>
+        <text class="node-sub" x="860" y="164">VPN / прокси</text>
+        <text class="node-sub" x="860" y="178">203.0.113.7</text>
+      </g>
+      <g id="racePkt" transform="translate(100,122)">
+        <rect id="raceShell" x="-26" y="-17" width="52" height="34" rx="9" fill="rgba(53,224,161,.15)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 4" style="opacity:0"/>
+        <rect id="raceBody" x="-15" y="-11" width="30" height="22" rx="6" fill="var(--packet)"/>
+        <text id="raceLock" x="0" y="4.5" text-anchor="middle" font-size="11" fill="#04120C" style="opacity:0">🔒</text>
+        <text class="pkt-lbl" id="raceLbl" x="0" y="-24"></text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="raceGo">🛰 Авто</button>
+    <button class="btn ghost" id="racePrev" disabled>‹ Назад</button>
+    <button class="btn ghost" id="raceNext">Шаг ›</button>
+    <span class="score" id="raceStep"></span>
+  </div>
+  <div class="speech" id="raceSpeech">
+    <span class="ava">🛰</span>
+    <span><span class="who">Инженер связи</span><span class="say">Выбери протокол наверху — и в путь. Цензор на проводе один и тот же, а вот видит он каждый протокол по-разному.</span></span>
+  </div>
+
+  <div class="info-cards three" id="raceCards">
+    <div class="icard" data-for="you"><h3>🏠 Вы + VPN-клиент</h3><p>Клиент упаковывает трафик по правилам выбранного протокола: WireGuard — компактный UDP-рукопожатие, OpenVPN — полный TLS на 443, VLESS+Reality — TLS-мимикрия под настоящий сайт.</p></div>
+    <div class="icard" data-for="censor"><h3>🕵 Цензор (DPI)</h3><p>Смотрит на порт, сигнатуры заголовков, статистику пакетов и может устроить активное зондирование — сам постучаться на подозрительный сервер. Его цель — отличить VPN от обычного трафика.</p></div>
+    <div class="icard" data-for="srv"><h3>🛡 Сервер</h3><p>VPN-сервер или прокси. Для Reality — ещё и «сайт-прикрытие»: на зондирование цензора он отвечает как настоящий веб-ресурс, потому что реально им прикидывается.</p></div>
+  </div>
+
+  <div class="note"><b>Ключевая мысль:</b> чем «эталоннее» протокол, тем заметнее его почерк. WireGuard быстр, но узнаваем; OpenVPN гибок и похож на HTTPS; Reality вообще притворяется чужим сайтом — и именно маскировка решает, пройдет туннель там, где VPN блокируют.</div>
+</section>
+
+<!-- ============ DISPATCHER ============ -->
+<section id="disp" class="reveal">
+  <div class="kicker">Игра 2 · Диспетчер протоколов</div>
+  <h2>Какой протокол под эту задачу?</h2>
+  <p>Ты — сетевой консультант: к тебе приходят с задачами, а ты отправляешь каждую в дверь правильного протокола. Инструмент — <b>шпаргалка-таблица прямо над сценой</b>. По ходу смены случится событие — оно поставит игру на паузу, обновит таблицу и ждут твоего «Продолжить».</p>
+
+  <div class="note">
+    <b>Как консультант выбирает протокол</b> — три шага, всегда в этом порядке:
+    <ol style="margin:10px 0 0 22px;display:flex;flex-direction:column;gap:8px">
+      <li><b>Прочитать задачу</b>: скорость? совместимость? цензура? офисы?</li>
+      <li><b>Найти в шпаргалке строку, которая лучше всего подходит.</b> Побеждает самое точное совпадение: если задача про жёсткий DPI — это строка про маскировку, а не про скорость.</li>
+      <li><b>Отправить задачу в дверь этого протокола.</b> Таймера нет — кликай дверь, когда готов.</li>
+    </ol>
+  </div>
+
+  <div class="rt" id="rtProto">
+    <div class="rt-title">📋 Шпаргалка — сверяйся с ней на каждой задаче</div>
+    <div id="rtProtoRows"></div>
+  </div>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 440" role="img" aria-label="Игра: выбери дверь протокола для задачи">
+      <path class="wire" d="M 60 220 H 360"/>
+      <text class="pkt-lbl" id="dispTask" x="44" y="192" style="font-size:12.5px;text-anchor:start">Задача: …</text>
+      <rect x="44" y="206" width="30" height="22" rx="6" fill="var(--packet)" opacity=".25"/>
+      <rect x="360" y="170" width="170" height="100" rx="14" fill="var(--surface2)" stroke="var(--accent)" stroke-width="2"/>
+      <text class="node-label" x="445" y="210">ТЫ — КОНСУЛЬТАНТ 🧑‍💻</text>
+      <text class="node-sub" x="445" y="232">шпаргалка наверху</text>
+      <text class="node-sub" x="445" y="246">таймера нет</text>
+      <g class="cable-g" data-ans="wg" tabindex="0" role="button" aria-label="Дверь WireGuard">
+        <path class="cable-hit" d="M 530 195 C 620 195 620 55 700 55"/>
+        <path class="cable" d="M 530 195 C 620 195 620 55 700 55"/>
+        <rect class="out-box" x="700" y="23" width="220" height="64" rx="12"/>
+        <text class="node-label" x="810" y="51" style="font-size:14px">🚀 WireGuard</text>
+        <text class="node-sub" x="810" y="71">ядро · 1 RTT · ~4000 строк</text>
+      </g>
+      <g class="cable-g" data-ans="ovpn" tabindex="0" role="button" aria-label="Дверь OpenVPN">
+        <path class="cable-hit" d="M 530 210 C 620 210 620 155 700 155"/>
+        <path class="cable" d="M 530 210 C 620 210 620 155 700 155"/>
+        <rect class="out-box" x="700" y="123" width="220" height="64" rx="12"/>
+        <text class="node-label" x="810" y="151" style="font-size:14px">🛠 OpenVPN</text>
+        <text class="node-sub" x="810" y="171">userspace · TLS · TCP/443</text>
+      </g>
+      <g class="cable-g" data-ans="ike" tabindex="0" role="button" aria-label="Дверь IPsec/IKEv2">
+        <path class="cable-hit" d="M 530 235 C 620 235 620 255 700 255"/>
+        <path class="cable" d="M 530 235 C 620 235 620 255 700 255"/>
+        <rect class="out-box" x="700" y="223" width="220" height="64" rx="12"/>
+        <text class="node-label" x="810" y="251" style="font-size:14px">🏢 IPsec/IKEv2</text>
+        <text class="node-sub" x="810" y="271">встроен в ОС и роутеры</text>
+      </g>
+      <g class="cable-g" data-ans="ss" tabindex="0" role="button" aria-label="Дверь Shadowsocks/VLESS">
+        <path class="cable-hit" d="M 530 250 C 620 250 620 355 700 355"/>
+        <path class="cable" d="M 530 250 C 620 250 620 355 700 355"/>
+        <rect class="out-box" x="700" y="323" width="220" height="64" rx="12"/>
+        <text class="node-label" x="810" y="351" style="font-size:14px">🎭 Shadowsocks/VLESS</text>
+        <text class="node-sub" x="810" y="371">прокси · маскировка под веб</text>
+      </g>
+      <g id="dispPkt" transform="translate(60,220)" style="opacity:0">
+        <rect x="-13" y="-9" width="26" height="18" rx="5" fill="var(--packet)"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10">📦</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="dispStart">🕹 Начать смену консультанта</button>
+    <button class="btn" id="dispCont" style="display:none">Понятно, продолжить ▶</button>
+    <button class="btn ghost" id="dispReset" style="display:none">Заново</button>
+    <span class="score" id="dispScore"></span>
+  </div>
+  <div class="speech" id="dispSpeech">
+    <span class="ava">🧑‍💻</span>
+    <span><span class="who">Старший инженер</span><span class="say">Жми «Начать смену». Задачи будут прилетать по одной: читай задачу, сверяйся со шпаргалкой НАД сценой и кликай дверь протокола. Таймера нет — думай сколько хочешь.</span></span>
+  </div>
+</section>
+
+<!-- ============ WG BUILDER ============ -->
+<section id="wg" class="reveal">
+  <div class="kicker">Игра 3 · Конструктор</div>
+  <h2>Собери WireGuard из четырёх деталей</h2>
+  <p>WireGuard — это конструктор без единой лишней детали: транспорт, рукопожатие, шифр и идентичность. Кликай по деталям в нужные слоты. Одна деталь тут из другого набора — догадаешься, какая?</p>
+
+  <div class="builder">
+    <div class="slots">
+      <div class="slot" data-slot="transport"><span class="hint">1 · Транспорт</span></div>
+      <div class="slot" data-slot="hs"><span class="hint">2 · Рукопожатие</span></div>
+      <div class="slot" data-slot="cipher"><span class="hint">3 · Шифр данных</span></div>
+      <div class="slot" data-slot="identity"><span class="hint">4 · Идентичность</span></div>
+    </div>
+    <div class="chips" id="wgChips">
+      <button class="chip" data-target="transport">📮 UDP — минимум накладных</button>
+      <button class="chip" data-target="hs">🤝 Noise_IK + X25519 — рукопожатие в 1 RTT</button>
+      <button class="chip" data-target="cipher">🔐 ChaCha20-Poly1305 — фиксированный AEAD</button>
+      <button class="chip" data-target="identity">🔑 пара ключей прямо в конфиге</button>
+      <button class="chip" data-target="cert">📜 X.509-сертификат от CA</button>
+    </div>
+    <div class="speech" id="wgSpeech" style="margin-top:18px">
+      <span class="ava">🧩</span>
+      <span><span class="who">Мейнтейнер WireGuard</span><span class="say">У моего протокола ~4000 строк кода и ноль лишних сущностей. Собери его из четырёх деталей — а пятую заверни, она из чужого набора 😏</span></span>
+    </div>
+    <div class="builder-done" id="wgDone">
+      <b>WireGuard собран! 🚀</b> Вот как выглядит его конфиг — вся «бумага» на четыре строки настроек:
+      <div class="conf"><span class="cmt"># /etc/wireguard/wg0.conf — и это ВЕСЬ конфиг клиента</span>
+<span class="sec">[Interface]</span>
+PrivateKey = <span class="cmt">&lt;твой приватный ключ&gt;</span>
+Address = 10.8.0.2/24
+ListenPort = 51820
+
+<span class="sec">[Peer]</span>
+PublicKey = <span class="cmt">&lt;публичный ключ сервера — из рук в руки&gt;</span>
+AllowedIPs = 0.0.0.0/0
+Endpoint = 203.0.113.7:51820</div>
+      <div class="mini-track"><div class="mini-pkt" id="wgMini"></div></div>
+      <div class="btn-row">
+        <button class="btn" id="wgSend">Запустить туннель 🚀</button>
+        <button class="btn ghost" id="wgReset">Собрать заново</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="note"><b>Ни сертификатов, ни удостоверяющих центров, ни выбора шифров:</b> идентичность — просто публичный ключ, который ты вписал в конфиг, а криптонул один и всегда один (Noise_IK + X25519 + ChaCha20-Poly1305). Меньше параметров — меньше способов ошибиться. Оборотная сторона: уникальный почерк рукопожатия, за который WireGuard ловит DPI.</div>
+</section>
+
+<!-- ============ QUIZ ============ -->
+<section id="quiz" class="reveal">
+  <div class="kicker">Проверка</div>
+  <h2>Мини-квиз: протокол выбран верно?</h2>
+  <div class="quiz" id="quizBox"></div>
+  <div class="quiz-score" id="quizScore"></div>
+</section>
+
+<footer>
+  <a class="next-link" href="./07-arhitektury-vpn.html">Дальше: архитектуры VPN <span>→</span></a>
+  <div class="sources">
+    <h3>Источники</h3>
+    <ul>
+      <li>RFC 8985 — The WireGuard VPN Protocol: <a href="https://datatracker.ietf.org/doc/html/rfc8985">datatracker.ietf.org/doc/html/rfc8985</a></li>
+      <li>WireGuard Whitepaper: <a href="https://www.wireguard.com/papers/wireguard.pdf">wireguard.com/papers/wireguard.pdf</a></li>
+      <li>RFC 7296 — IKEv2: <a href="https://datatracker.ietf.org/doc/html/rfc7296">datatracker.ietf.org/doc/html/rfc7296</a></li>
+      <li>RFC 4301 — Security Architecture for IP: <a href="https://datatracker.ietf.org/doc/html/rfc4301">datatracker.ietf.org/doc/html/rfc4301</a></li>
+      <li>OpenVPN — документация: <a href="https://openvpn.net/community-resources/">openvpn.net/community-resources</a></li>
+      <li>Shadowsocks: <a href="https://shadowsocks.org/">shadowsocks.org</a></li>
+      <li>XTLS/Reality: <a href="https://github.com/XTLS/Reality">github.com/XTLS/Reality</a></li>
+      <li>V2Fly — документация VLESS: <a href="https://www.v2fly.org/">v2fly.org</a></li>
+    </ul>
+  </div>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:30px;font-family:var(--font-mono)">documents_hub / vpn · модуль 06 · статус: draft</p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, RM ? Math.min(ms, 300) : ms));
+
+/* ================= reveal / progress / dots ================= */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+const sections = [...document.querySelectorAll('section')];
+const dots = [...document.querySelectorAll('#dots a')];
+function onScroll(){
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  let cur = sections[0].id;
+  for (const s of sections){ if (s.getBoundingClientRect().top < innerHeight * 0.4) cur = s.id; }
+  dots.forEach(d => d.classList.toggle('on', d.dataset.s === cur));
+}
+addEventListener('scroll', onScroll, { passive:true }); onScroll();
+
+/* ================= helpers ================= */
+function speak(strip, ava, who, text, bad){
+  strip.className = 'speech pop' + (bad ? ' bad' : '');
+  strip.innerHTML = '';
+  const a = document.createElement('span'); a.className = 'ava'; a.textContent = ava;
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
+  const s = document.createElement('span'); s.className = 'say'; s.textContent = text;
+  const wrap = document.createElement('span'); wrap.appendChild(w); wrap.appendChild(s);
+  strip.appendChild(a); strip.appendChild(wrap);
+}
+function movePkt(g, from, to, dur, cancelFn){
+  return new Promise(res => {
+    const t0 = performance.now();
+    if (RM){ g.setAttribute('transform', `translate(${to[0]},${to[1]})`); res(); return; }
+    function step(now){
+      if (cancelFn && cancelFn()){ res(); return; }
+      const k = Math.min((now - t0) / dur, 1);
+      const x = from[0] + (to[0] - from[0]) * k;
+      const y = from[1] + (to[1] - from[1]) * k;
+      g.setAttribute('transform', `translate(${x},${y})`);
+      if (k < 1) requestAnimationFrame(step); else res();
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+/* ================= game 1: race through censor ================= */
+(function race(){
+  const pkt = document.getElementById('racePkt');
+  const shell = document.getElementById('raceShell');
+  const body = document.getElementById('raceBody');
+  const lock = document.getElementById('raceLock');
+  const lbl = document.getElementById('raceLbl');
+  const btn = document.getElementById('raceGo');
+  const prevBtn = document.getElementById('racePrev');
+  const nextBtn = document.getElementById('raceNext');
+  const counter = document.getElementById('raceStep');
+  const strip = document.getElementById('raceSpeech');
+  const intro = strip.innerHTML;
+  const START = [100,122];
+  let running = false, autoCancel = false, busy = false, idx = -1, cur = START.slice();
+  let proto = null, steps = [];
+
+  const SCRIPTS = {
+    wg: [
+      { p:[100,122], l:'init 🤝 UDP:51820', sh:true, lk:false, bl:false, ava:'🏠', who:'Вы · WireGuard',
+        say:'Пакет-рукопожатие готов: UDP на порт 51820, внутри Noise_IK — один круг и ключи в кармане. Ядерная скорость, минимум накладных. Отправляю!' },
+      { p:[480,122], l:'🚫 сигнатура', sh:true, lk:false, bl:true, ava:'🕵', who:'Цензор · DPI', bad:true,
+        say:'Стоп. UDP 51820, а формат пакета один в один совпадает с сигнатурой init-сообщения WireGuard — она фиксированная и уникальная. Заблокировано!' },
+      { p:[480,122], l:'заблокирован', sh:true, lk:false, bl:true, ava:'🎓', who:'Мораль', bad:true,
+        say:'WireGuard — король скорости, но у его рукопожатия уникальный «отпечаток». Там, где стоит серьёзный DPI, чистый WireGuard блокируют: нужна обфускация или другой протокол.' }
+    ],
+    ovpn: [
+      { p:[100,122], l:'TLS · TCP:443 🛠', sh:true, lk:true, bl:false, ava:'🏠', who:'Вы · OpenVPN',
+        say:'OpenVPN на TCP-порту 443: внутри полноценный TLS-handshake с сертификатами — как у настоящего HTTPS-сайта. Медленнее WireGuard, зато маска солидная. Поехали!' },
+      { p:[480,122], l:'🤔 TLS?..', sh:true, lk:true, bl:false, ava:'🕵', who:'Цензор · DPI',
+        say:'Порт 443, TLS-рукопожатие… вроде обычный сайт. Стоп: а где SNI — имя домена в приветствии? Пусто. И за 443 торчит хостинг-провайдер, а не CDN. Подозрительно…' },
+      { p:[480,122], l:'😤 пропущен', sh:true, lk:true, bl:false, ava:'🕵', who:'Цензор · DPI',
+        say:'Улики косвенные — в стране с умеренной фильтрацией пропускаю. Но в стране с жёстким DPI за пустой SNI и «не-сайтовый» сертификат уже заблокировали бы.' },
+      { p:[860,122], l:'туннель 🔒', sh:true, lk:true, bl:false, ava:'🛡', who:'VPN-сервер',
+        say:'TLS-handshake завершён, сертификаты проверены, туннель поднят. Трафик пошёл: AES-GCM внутри, для провайдера — почти настоящий HTTPS снаружи.' },
+      { p:[860,122], l:'✅ прошёл', sh:true, lk:true, bl:false, ava:'🎓', who:'Мораль',
+        say:'OpenVPN прошёл, но на нервах: его маска «я сайт» держится на порте и TLS, а внимательный цензор видит несостыковки. Гибко и совместимо — но не невидимо.' }
+    ],
+    vless: [
+      { p:[100,122], l:'TLS 1.3 🎭', sh:true, lk:true, bl:false, ava:'🏠', who:'Вы · VLESS+Reality',
+        say:'Reality включает мимикрию: снаружи это настоящая TLS 1.3-сессия с сайтом-прикрытием — популярным CDN. Внутрь зашит мой VLESS-трафик. Поехали!' },
+      { p:[480,122], l:'🔍 зондирую', sh:true, lk:true, bl:false, ava:'🕵', who:'Цензор · DPI',
+        say:'Выглядит как обычный HTTPS… но я не верю на слово. Активное зондирование: сам стучусь на этот IP и прошу показать сайт.' },
+      { p:[860,122], l:'🌐 вот сайт', sh:true, lk:true, bl:false, ava:'🛡', who:'Сервер-прикрытие',
+        say:'(отвечает безобидным содержимым) Пожалуйста: настоящая страница, настоящий сертификат прикрытого сайта. Кто без секрета — видит обычный веб-ресурс.' },
+      { p:[480,122], l:'😐 пропускаю', sh:true, lk:true, bl:false, ava:'🕵', who:'Цензор · DPI',
+        say:'Отвечает как настоящий сайт, TLS настоящий, статистика похожа на веб… Не придерусь. Пропускаю 🤷' },
+      { p:[860,122], l:'✅ прошёл', sh:true, lk:true, bl:false, ava:'🛡', who:'Прокси-сервер',
+        say:'Для цензора вся сессия была невинным визитом на сайт-прикрытие. А твой трафик уже расшифрован и отправлен дальше.' },
+      { p:[860,122], l:'🏆 невидимка', sh:true, lk:true, bl:false, ava:'🎓', who:'Мораль',
+        say:'Reality переживает даже активное зондирование: секрет знают только клиент и сервер, а всем остальным показывают настоящий сайт. Сегодня это золотой стандарт обхода жёсткого DPI.' }
+    ]
+  };
+
+  function applyStep(i){
+    const st = steps[i];
+    speak(strip, st.ava, st.who, st.say, st.bad);
+    lbl.textContent = st.l;
+    shell.style.opacity = st.sh ? 1 : 0;
+    lock.style.opacity = st.lk ? 1 : 0;
+    const c = st.bl ? 'var(--exposed)' : 'var(--packet)';
+    body.setAttribute('fill', c);
+    shell.setAttribute('stroke', st.bl ? 'var(--exposed)' : 'var(--accent)');
+    counter.textContent = `шаг ${i+1} из ${steps.length}`;
+    prevBtn.disabled = i <= 0;
+    nextBtn.disabled = i >= steps.length - 1;
+  }
+  function resetToStart(){
+    idx = -1; cur = START.slice();
+    pkt.setAttribute('transform', `translate(${cur[0]},${cur[1]})`);
+    shell.style.opacity = 0; lock.style.opacity = 0; lbl.textContent = '';
+    body.setAttribute('fill', 'var(--packet)');
+    shell.setAttribute('stroke', 'var(--accent)');
+    counter.textContent = steps.length ? `шаг 0 из ${steps.length}` : '';
+    prevBtn.disabled = true; nextBtn.disabled = !steps.length;
+    btn.disabled = !steps.length;
+  }
+  async function goto(i){
+    busy = true;
+    await movePkt(pkt, cur, steps[i].p, 950, () => autoCancel);
+    cur = steps[i].p.slice();
+    if (autoCancel){ busy = false; return; }
+    idx = i; busy = false;
+    applyStep(i);
+  }
+  async function arrow(dir){
+    if (running) autoCancel = true;
+    while (busy || running) await sleep(60);
+    autoCancel = false;
+    const t = idx + dir;
+    if (t < 0 || t >= steps.length) return;
+    await goto(t);
+  }
+  prevBtn.addEventListener('click', () => arrow(-1));
+  nextBtn.addEventListener('click', () => arrow(1));
+
+  document.querySelectorAll('#protoRow .btn').forEach(b => {
+    b.addEventListener('click', async () => {
+      if (running) autoCancel = true;
+      while (busy || running) await sleep(60);
+      running = false; btn.disabled = false;
+      document.querySelectorAll('#protoRow .btn').forEach(x => x.classList.add('ghost'));
+      b.classList.remove('ghost');
+      proto = b.dataset.proto;
+      steps = SCRIPTS[proto];
+      resetToStart();
+      const names = { wg:'🚀 WireGuard', ovpn:'🛠 OpenVPN · TCP/443', vless:'🎭 VLESS + Reality' };
+      speak(strip, '🛰', 'Инженер связи', `Протокол: ${names[proto]}. Жми «Авто» или листай шаги стрелками — посмотрим, что увидит цензор.`);
+      btn.textContent = '🛰 Авто';
+    });
+  });
+
+  document.querySelectorAll('#race .node-g[data-node]').forEach(g => {
+    const act = () => {
+      document.querySelectorAll('#race .node-g').forEach(x => x.classList.remove('sel'));
+      g.classList.add('sel');
+      const card = document.querySelector(`#raceCards .icard[data-for="${g.dataset.node}"]`);
+      if (card){
+        document.querySelectorAll('#raceCards .icard.sel').forEach(x => x.classList.remove('sel'));
+        card.classList.add('sel');
+        card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+        card.scrollIntoView({ block:'nearest', behavior:'smooth' });
+      }
+    };
+    g.addEventListener('click', act);
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); act(); } });
+  });
+
+  btn.addEventListener('click', async () => {
+    if (running || !steps.length) return;
+    if (idx >= steps.length - 1) resetToStart();
+    running = true; autoCancel = false; btn.disabled = true;
+    while (!autoCancel && idx < steps.length - 1){
+      await goto(idx + 1);
+      if (autoCancel) break;
+      for (let w = 0; w < 2000 && !autoCancel; w += 60) await sleep(60);
+    }
+    running = false; btn.disabled = false;
+    btn.textContent = idx >= steps.length - 1 ? '🛰 Ещё разок' : '🛰 Авто';
+    prevBtn.disabled = idx <= 0; nextBtn.disabled = idx >= steps.length - 1;
+  });
+
+  resetToStart();
+  /* дефолт: WireGuard выбран — степ-навигация работает сразу */
+  proto = 'wg';
+  steps = SCRIPTS.wg;
+  document.querySelector('#protoRow .btn[data-proto="wg"]').classList.remove('ghost');
+  resetToStart();
+  speak(strip, '🛰', 'Инженер связи', 'По умолчанию выбран 🚀 WireGuard. Жми «Авто» или листай шаги стрелками — а протокол можно переключить кнопками наверху.');
+})();
+
+/* ================= game 2: protocol dispatcher ================= */
+(function dispatcher(){
+  const RT = {
+    base: [
+      { dst:'🚀 WireGuard', why:'скорость, ядро, простота', when:'свой VPN на VPS, слабое железо', cls:'' },
+      { dst:'🛠 OpenVPN', why:'гибкость, TCP/443, сертификаты', when:'нужна маска HTTPS и совместимость', cls:'' },
+      { dst:'🏢 IPsec/IKEv2', why:'встроен в ОС и роутеры', when:'офисы, site-to-site, корпоративка', cls:'' },
+      { dst:'🎭 Shadowsocks/VLESS', why:'прокси, маскировка', when:'жёсткая цензура, DPI', cls:'' }
+    ],
+    dpi: [
+      { dst:'🚀 WireGuard', why:'🚫 сигнатура рукопожатия ловится DPI', when:'только где VPN не блокируют', cls:'dead' },
+      { dst:'🛠 OpenVPN', why:'маска HTTPS, но SNI/эвристики выдают', when:'фильтрация умеренная', cls:'' },
+      { dst:'🏢 IPsec/IKEv2', why:'сигнатуры IKE тоже известны', when:'офисы (их DPI обычно не трогает)', cls:'' },
+      { dst:'🎭 VLESS + Reality', why:'мимикрия под настоящий сайт, проходит активное зондирование', when:'жёсткий DPI — сюда', cls:'hl' }
+    ]
+  };
+  const rowsBox = document.getElementById('rtProtoRows');
+  function renderRT(rows){
+    rowsBox.innerHTML = '';
+    rows.forEach(r => {
+      const d = document.createElement('div');
+      d.className = 'rt-row new rt-3col' + (r.cls ? ' ' + r.cls : '');
+      d.innerHTML = `<span class="dst">${r.dst}</span><span>${r.why}</span><span>${r.when}</span>`;
+      rowsBox.appendChild(d);
+    });
+  }
+
+  const PLAN = [
+    { type:'round', dest:'Свой VPN на VPS: скорость, настройка за 10 минут', ans:'wg',
+      ok:'Верно! WireGuard: конфиг из пары строк, рукопожатие в один круг, трафик шифруется прямо в ядре — гигабиты даже на дешёвом VPS.',
+      badHint:'Скорость + простота + свой сервер = строка WireGuard в шпаргалке. Никакой цензуры в задаче нет.' },
+    { type:'round', dest:'Офис ↔ филиал: с двух сторон корпоративные роутеры', ans:'ike',
+      ok:'Так точно! IPsec/IKEv2 — родной язык роутеров и фаерволов: site-to-site между филиалами настраивается без сторонних программ (модуль 07).',
+      badHint:'Ключевые слова: «офис ↔ филиал» и «корпоративные роутеры». Смотри строку IPsec/IKEv2 в шпаргалке.' },
+    { type:'event', ava:'⚡', who:'Событие', say:'В стране N развернули новый DPI: он блокирует WireGuard по сигнатуре рукопожатия, а OpenVPN вычисляет по пустому SNI. Шпаргалка обновилась — WireGuard там теперь не жилец, зато VLESS+Reality проходит даже активное зондирование.', rt:'dpi' },
+    { type:'round', dest:'Пользователь из страны N: YouTube заблокирован, DPI на полную', ans:'ss',
+      ok:'Именно! Жёсткий DPI — территория маскировки: VLESS+Reality притворяется настоящим сайтом и переживает даже активное зондирование цензора.',
+      badHint:'Задача из страны N, где DPI блокирует всё узнаваемое. В обновлённой шпаргалке подсвечена одна строка — про мимикрию.' },
+    { type:'round', dest:'Старый корпоративный портал: VPN строго на TCP/443, сертификаты от внутреннего CA', ans:'ovpn',
+      ok:'Да! OpenVPN умеет и TCP/443, и полноценные сертификаты (PKI) — гибкость ветерана там, где всё завязано на внутренний удостоверяющий центр.',
+      badHint:'«TCP/443» и «сертификаты от CA» — это ключевые слова строки OpenVPN. WireGuard так не умеет: только UDP и ключи без сертификатов.' },
+    { type:'round', dest:'Слабый ноутбук, 4K-видео через туннель: каждый мегабит на счету', ans:'wg',
+      ok:'Верно! Дешёвое железо + высокая скорость = WireGuard: шифрование в ядре, минимум накладных расходов на каждый пакет.',
+      badHint:'Задача про скорость на слабом железе — это первая строка шпаргалки. Цензуры тут нет, маскировка не нужна.' }
+  ];
+  const END = { wg:[800,55], ovpn:[800,155], ike:[800,255], ss:[800,355] };
+  const pkt = document.getElementById('dispPkt');
+  const destLbl = document.getElementById('dispTask');
+  const strip = document.getElementById('dispSpeech');
+  const score = document.getElementById('dispScore');
+  const startBtn = document.getElementById('dispStart');
+  const resetBtn = document.getElementById('dispReset');
+  const contBtn = document.getElementById('dispCont');
+  let i = 0, pts = 0, rounds = 0, running = false, started = false;
+  const TOTAL = PLAN.filter(s => s.type === 'round').length;
+
+  function waitContinue(){
+    return new Promise(res => {
+      contBtn.style.display = '';
+      const h = () => { contBtn.removeEventListener('click', h); contBtn.style.display = 'none'; res(); };
+      contBtn.addEventListener('click', h);
+    });
+  }
+
+  async function next(){
+    if (i >= PLAN.length){
+      speak(strip, '🏆', 'Смена окончена', pts === rounds
+        ? `Все ${rounds} задач — в правильные двери! Ты теперь знаешь, когда WireGuard, когда OpenVPN, когда IPsec, а когда — хамелеон Reality. Дальше — как из этих протоколов собирают архитектуры сетей.`
+        : `Смена закрыта: ${pts} из ${rounds}. Загляни в шпаргалку ещё раз и попробуй заново — консультанту положена переаттестация 😄`);
+      startBtn.style.display = 'none'; resetBtn.style.display = '';
+      return;
+    }
+    const st = PLAN[i];
+    if (st.type === 'event'){
+      renderRT(RT[st.rt]);
+      speak(strip, st.ava, st.who, st.say);
+      pkt.style.opacity = 0;
+      i++;
+      await waitContinue();
+      await next();
+      return;
+    }
+    destLbl.textContent = 'Задача: ' + st.dest;
+    pkt.style.opacity = 0;
+    speak(strip, '📦', `Задача ${rounds+1} из ${TOTAL}`, `${st.dest}. Сверься со шпаргалкой наверху и кликни дверь протокола. Таймера нет — кликай, когда готов.`);
+  }
+
+  async function answer(ans, gEl){
+    if (running || !started || i >= PLAN.length) return;
+    const st = PLAN[i];
+    if (st.type !== 'round') return;
+    if (ans === st.ans){
+      running = true; pts++; rounds++;
+      score.textContent = `✅ ${pts} / ${rounds}`;
+      gEl.classList.add('ok');
+      pkt.style.opacity = 1;
+      speak(strip, '🧑‍💻', 'Консультант', st.ok);
+      await movePkt(pkt, [60,220], END[ans], 850);
+      gEl.classList.remove('ok');
+      pkt.style.opacity = 0;
+      i++;
+      await sleep(2200);
+      running = false;
+      await next();
+    } else {
+      gEl.classList.add('err');
+      speak(strip, '❌', 'Не та дверь!', st.badHint, true);
+      setTimeout(() => gEl.classList.remove('err'), 500);
+    }
+  }
+
+  document.querySelectorAll('#disp .cable-g').forEach(g => {
+    g.addEventListener('click', () => answer(g.dataset.ans, g));
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); answer(g.dataset.ans, g); } });
+  });
+
+  startBtn.addEventListener('click', async () => {
+    started = true; running = false; startBtn.disabled = true;
+    renderRT(RT.base);
+    await next();
+  });
+  resetBtn.addEventListener('click', () => {
+    i = 0; pts = 0; rounds = 0; score.textContent = '';
+    contBtn.style.display = 'none';
+    resetBtn.style.display = 'none'; startBtn.style.display = ''; startBtn.disabled = false;
+    destLbl.textContent = 'Задача: …';
+    renderRT(RT.base);
+    speak(strip, '🧑‍💻', 'Старший инженер', 'Новая смена! Жми «Начать смену консультанта» — и сверяйся со шпаргалкой наверху.');
+  });
+  renderRT(RT.base);
+})();
+
+/* ================= game 3: wireguard builder ================= */
+(function wgBuilder(){
+  const strip = document.getElementById('wgSpeech');
+  const done = document.getElementById('wgDone');
+  const chips = [...document.querySelectorAll('#wgChips .chip')];
+  let filled = 0;
+
+  const GOOD = {
+    transport: 'Деталь 1: транспорт — UDP. Никакого TCP: WireGuard не хочет двойного подтверждения доставки — обрывы лечит повторным рукопожатием, а не повторной передачей.',
+    hs:        'Деталь 2: рукопожатие Noise_IK на кривой X25519 — один круг туда-обратно (1 RTT), и общий секрет готов (модуль 05). Ответ сервера — вообще без дополнительного круга.',
+    cipher:    'Деталь 3: шифр один и навсегда — ChaCha20-Poly1305 (AEAD). Никакого «выбора шифров» при рукопожатии: нечего согласовывать — нечему ломаться.',
+    identity:  'Деталь 4: идентичность — просто пара ключей. Публичный ключ сервера ты вписываешь в конфиг «из рук в руки»: ни сертификатов, ни удостоверяющих центров.'
+  };
+
+  chips.forEach(c => c.addEventListener('click', () => {
+    const t = c.dataset.target;
+    if (t === 'cert'){
+      c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
+      speak(strip, '📜', 'Сертификат X.509?', 'Я из набора OpenVPN и IPsec 😅 В WireGuard нет ни PKI, ни удостоверяющих центров — доверие «из рук в руки»: публичный ключ просто вписан в конфиг. Меньше сущностей — меньше атак.', true);
+      return;
+    }
+    const slot = document.querySelector(`.slot[data-slot="${t}"]`);
+    if (!slot || slot.classList.contains('done')) return;
+    slot.classList.add('done');
+    const d = document.createElement('div'); d.className = 'filled'; d.textContent = c.textContent.replace(/^[^\s]+\s/, '');
+    slot.appendChild(d);
+    c.disabled = true; filled++;
+    speak(strip, '🧩', 'Деталь на месте', GOOD[t]);
+    if (filled === 4){
+      done.classList.add('show');
+      speak(strip, '🚀', 'Мейнтейнер WireGuard', 'Весь протокол собран! Посмотри на конфиг — он смешной по размеру. Жми «Запустить туннель».');
+    }
+  }));
+
+  document.getElementById('wgSend').addEventListener('click', () => {
+    const p = document.getElementById('wgMini');
+    p.classList.remove('go'); void p.offsetWidth; p.classList.add('go');
+    speak(strip, '🚀', 'Туннель поднят', 'Рукопожатие — один круг, данные — в ядре, скорость — гигабиты. Но помни урок первой игры: за скорость WireGuard платит узнаваемой сигнатурой. Где цензура — там маскировка.');
+  });
+
+  document.getElementById('wgReset').addEventListener('click', () => {
+    filled = 0;
+    document.querySelectorAll('#wg .slot').forEach(s => { s.classList.remove('done'); s.querySelector('.filled')?.remove(); });
+    chips.forEach(c => c.disabled = false);
+    done.classList.remove('show');
+    document.getElementById('wgMini').classList.remove('go');
+    speak(strip, '🧩', 'Мейнтейнер WireGuard', 'У моего протокола ~4000 строк кода и ноль лишних сущностей. Собери его из четырёх деталей — а пятую заверни, она из чужого набора 😏');
+  });
+})();
+
+/* ================= quiz ================= */
+(function quiz(){
+  const QUIZ = [
+    { q: 'Почему WireGuard быстрее OpenVPN?',
+      a: ['Он использует более слабый шифр', 'Работает в ядре, рукопожатие в 1 RTT и никаких копий пакета в userspace', 'Он вообще не шифрует трафик'], right: 1,
+      ex: 'Ядро вместо пользовательского пространства, рукопожатие Noise_IK за один круг и фиксированный быстрый AEAD-шифр. OpenVPN платит за гибкость: userspace-копирование и полный TLS-handshake.' },
+    { q: 'Почему DPI легко узнаёт «чистый» WireGuard?',
+      a: ['Он передаёт данные открытым текстом', 'У его init-сообщения фиксированная уникальная сигнатура', 'Он работает на запрещённом порту 80'], right: 1,
+      ex: 'Формат рукопожатия WireGuard публичен и неизменен — цензор сверяет байты с известной сигнатурой. Лечится обфускацией или переходом на маскирующиеся протоколы.' },
+    { q: 'Чем VLESS+Reality сильнее обычного Shadowsocks против цензора?',
+      a: ['Шифрует данные двумя слоями', 'Быстрее работает', 'Переживает активное зондирование: на проверку цензора отвечает настоящий сайт-прикрытие'], right: 2,
+      ex: 'Цензор может сам постучаться на подозрительный сервер. Shadowsocks ответит «ничем» и выдаст себя, а Reality покажет реальный сайт с настоящим сертификатом — отличить от подлинного HTTPS невозможно.' },
+    { q: 'Два офиса с корпоративными роутерами нужно соединить постоянным туннелем. Протокол?',
+      a: ['IPsec/IKEv2 — он встроен в роутеры и ОС', 'Shadowsocks — он быстрее', 'Никакой: только арендованная линия'], right: 0,
+      ex: 'Site-to-site — родная стихия IPsec: стандарт поддерживается фаерволами и роутерами (Mikrotik, Cisco) нативно, без сторонних программ. Подробности — модуль 07.' },
+    { q: 'Как WireGuard решает вопрос «кто свой» без сертификатов?',
+      a: ['Спрашивает пароль при каждом подключении', 'Доверяет всем — протокол небезопасен', 'Идентичность — пара ключей: публичный ключ сервера вписан в конфиг клиента «из рук в руки»'], right: 2,
+      ex: 'Никакой PKI: админ генерирует ключи и раздаёт их доверенным сторонам. Плюс — простота и меньше сущностей для атак; минус — ключи надо распространять вручную.' }
+  ];
+  const qBox = document.getElementById('quizBox');
+  let answered = 0, correct = 0;
+  QUIZ.forEach((item, qi) => {
+    const d = document.createElement('div'); d.className = 'q reveal';
+    const h = document.createElement('h3'); h.textContent = `Вопрос ${qi+1}. ${item.q}`;
+    d.appendChild(h);
+    item.a.forEach((txt, ai) => {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="radio" name="q${qi}" value="${ai}"><span>${txt}</span>`;
+      l.querySelector('input').addEventListener('change', () => {
+        if (d.classList.contains('answered')) return;
+        d.classList.add('answered');
+        const labels = [...d.querySelectorAll('label')];
+        labels[item.right].classList.add('right');
+        if (ai !== item.right) labels[ai].classList.add('wrong'); else correct++;
+        answered++;
+        const ex = document.createElement('div'); ex.className = 'expl'; ex.textContent = item.ex; d.appendChild(ex);
+        labels.forEach(x => x.querySelector('input').disabled = true);
+        document.getElementById('quizScore').textContent = answered === QUIZ.length ? `Результат: ${correct} / ${QUIZ.length}` : '';
+      });
+      d.appendChild(l);
+    });
+    qBox.appendChild(d);
+    io.observe(d);
+  });
+})();
+
+/* ================= hero background ================= */
+(function heroBg(){
+  if (RM) return;
+  const svg = document.getElementById('hero-bg');
+  svg.setAttribute('viewBox','0 0 1060 600'); svg.setAttribute('preserveAspectRatio','xMidYMid slice');
+  for (let i = 0; i < 14; i++){
+    const y = 30 + Math.random() * 540, dur = 9 + Math.random() * 14, delay = -Math.random() * dur;
+    const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x','-30'); r.setAttribute('y', y); r.setAttribute('width', 16 + Math.random()*22);
+    r.setAttribute('height','5'); r.setAttribute('rx','2.5');
+    r.setAttribute('fill', Math.random() < .3 ? 'var(--accent)' : 'var(--line)');
+    r.style.opacity = .25 + Math.random()*.4;
+    const a = document.createElementNS('http://www.w3.org/2000/svg','animate');
+    a.setAttribute('attributeName','x'); a.setAttribute('from','-40'); a.setAttribute('to','1100');
+    a.setAttribute('dur', dur + 's'); a.setAttribute('begin', delay + 's'); a.setAttribute('repeatCount','indefinite');
+    r.appendChild(a); svg.appendChild(r);
+  }
+})();
+</script>
+</body>
+</html>

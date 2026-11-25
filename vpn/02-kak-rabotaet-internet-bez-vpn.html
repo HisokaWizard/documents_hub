@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Модуль 02 · Как работает интернет без VPN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0E13;
+  --surface:#111823;
+  --surface2:#18212E;
+  --line:#232F3F;
+  --ink:#E8EEF4;
+  --muted:#8A97A4;
+  --accent:#35E0A1;      /* mint — VPN / tunnel */
+  --accent-dim:rgba(53,224,161,.14);
+  --exposed:#FF7A6B;     /* coral — what others see */
+  --exposed-dim:rgba(255,122,107,.13);
+  --packet:#58A6FF;      /* blue — your packet */
+  --paper:#F2E8C9;       /* postcard paper */
+  --radius:14px;
+  --font-head:'Unbounded',system-ui,sans-serif;
+  --font-body:'Golos Text',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:var(--font-body);font-size:17px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent);color:#04120C}
+
+/* ---------- progress + nav ---------- */
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:100;transition:width .15s linear}
+#dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;z-index:90}
+#dots a{width:9px;height:9px;border-radius:50%;background:var(--line);display:block;transition:all .3s}
+#dots a.on{background:var(--accent);transform:scale(1.45)}
+@media(max-width:900px){#dots{display:none}}
+
+/* ---------- layout ---------- */
+main{max-width:1060px;margin:0 auto;padding:0 28px}
+section{padding:96px 0 40px;min-height:60vh}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:none}
+.kicker{font-family:var(--font-mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1{font-family:var(--font-head);font-weight:800;font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.01em}
+h2{font-family:var(--font-head);font-weight:600;font-size:clamp(22px,3.2vw,32px);line-height:1.25;margin-bottom:18px}
+h3{font-size:17px;font-weight:700}
+p.lead{color:var(--muted);font-size:19px;max-width:680px;margin-top:18px}
+p+p{margin-top:14px}
+.term{color:var(--accent);font-weight:600}
+code,.mono{font-family:var(--font-mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:#BFD4E6}
+
+/* ---------- hero ---------- */
+#hero{min-height:92vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+#hero-bg{position:absolute;inset:0;pointer-events:none;opacity:.5}
+.hero-badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;margin-bottom:26px;width:max-content}
+.hero-badge b{color:var(--accent);font-weight:600}
+.scroll-hint{margin-top:56px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:10px}
+.scroll-hint .arrow{display:inline-block;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+.hero-games{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.hero-games span{font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--surface)}
+
+/* ---------- scene shared ---------- */
+.scene-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:26px;position:relative}
+.scene-svg{width:100%;height:auto;display:block}
+.node-g{cursor:pointer}
+.node-g .node-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .3s,fill .3s}
+.node-g:hover .node-box,.node-g.sel .node-box{stroke:var(--accent)}
+.node-g.sel .node-box{fill:#16211C}
+.node-label{font-family:var(--font-body);font-size:15px;font-weight:600;fill:var(--ink);text-anchor:middle}
+.node-sub{font-family:var(--font-mono);font-size:10px;fill:var(--muted);text-anchor:middle}
+.wire{stroke:var(--line);stroke-width:2;fill:none}
+.wire-dns{stroke:var(--line);stroke-width:1.5;fill:none;stroke-dasharray:4 6}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;gap:9px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:11px;padding:11px 20px;font-family:var(--font-body);font-size:15px;font-weight:600;cursor:pointer;transition:transform .25s,box-shadow .25s,opacity .25s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 0 20px rgba(53,224,161,.22)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.btn.ghost{background:none;border-color:var(--line);color:var(--muted)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
+
+/* ---------- speech strip ---------- */
+.speech{display:flex;gap:13px;align-items:flex-start;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:13px 17px;margin-top:16px;font-size:15px;min-height:56px;line-height:1.5}
+.speech .ava{font-size:22px;line-height:1.2;flex:0 0 auto}
+.speech .who{font-family:var(--font-mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:2px}
+.speech .say{color:var(--ink)}
+.speech.pop{animation:pop .35s ease}
+@keyframes pop{0%{transform:scale(.97);opacity:.4}100%{transform:scale(1);opacity:1}}
+.speech.bad .who{color:var(--exposed)}
+
+/* ---------- info cards (node click) ---------- */
+.info-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px}
+@media(max-width:860px){.info-cards{grid-template-columns:1fr}}
+.icard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;min-height:120px;transition:border-color .35s,background .35s}
+.icard h3{font-size:15px;display:flex;gap:9px;align-items:center;margin-bottom:9px}
+.icard p{font-size:14px;color:var(--muted)}
+.icard.sel{border-color:var(--accent);background:#16211C}
+.icard.flash{animation:flash .55s ease}
+@keyframes flash{0%{background:var(--accent-dim)}100%{background:var(--surface)}}
+
+/* ---------- packet builder ---------- */
+.builder{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:860px){.slots{grid-template-columns:1fr 1fr}}
+.slot{border:2px dashed var(--line);border-radius:12px;padding:16px 12px;min-height:110px;display:flex;flex-direction:column;gap:8px;transition:border-color .3s,background .3s}
+.slot .hint{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.slot .filled{font-size:14px;color:var(--ink);font-family:var(--font-mono);background:var(--surface2);border-radius:8px;padding:8px 10px;word-break:break-all}
+.slot.done{border-color:var(--accent);border-style:solid;background:var(--accent-dim)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{font-family:var(--font-mono);font-size:13.5px;background:var(--surface2);color:#BFD4E6;border:1.5px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;transition:border-color .25s,transform .2s,opacity .25s}
+.chip:hover{border-color:var(--accent);transform:translateY(-2px)}
+.chip:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.chip.shake{animation:shake .45s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.builder-done{display:none;margin-top:20px;border-top:1px dashed var(--line);padding-top:18px;font-size:14.5px;color:var(--muted)}
+.builder-done.show{display:block}
+.builder-done b{color:var(--ink)}
+.mini-track{position:relative;height:52px;margin-top:16px;border-bottom:2px solid var(--line);overflow:hidden}
+.mini-pkt{position:absolute;left:-40px;top:12px;width:34px;height:22px;border-radius:6px;background:var(--packet);opacity:0}
+.mini-pkt.go{opacity:1;animation:run 1.6s ease-in forwards}
+@keyframes run{0%{left:-40px}100%{left:105%}}
+
+/* ---------- ports building ---------- */
+.port-wrap{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:22px;margin-top:26px;align-items:start}
+@media(max-width:860px){.port-wrap{grid-template-columns:1fr}}
+.building{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px 24px 18px}
+.roof{height:14px;background:var(--surface2);border:1px solid var(--line);border-radius:8px 8px 0 0;margin:-25px -10px 20px;border-bottom:none}
+.wins{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.win{background:var(--surface2);border:1.5px solid var(--line);border-radius:9px;padding:13px 8px;text-align:center;cursor:pointer;transition:all .25s;color:var(--muted);font-family:var(--font-mono);font-size:13px;line-height:1.5}
+.win:hover{border-color:var(--muted)}
+.win.lit{background:rgba(53,224,161,.12);border-color:var(--accent);color:var(--accent);box-shadow:0 0 16px rgba(53,224,161,.2)}
+.win.dark.lit{background:var(--surface2);border-color:var(--muted);color:var(--muted);box-shadow:none}
+.win .num{font-size:16px;font-weight:600;display:block}
+.port-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px;min-height:200px}
+.port-card .big{font-size:34px;margin-bottom:10px}
+.port-card h3{font-family:var(--font-mono);color:var(--accent);font-size:16px;margin-bottom:10px}
+.port-card p{font-size:15px;color:var(--muted)}
+.addr-line{font-family:var(--font-mono);font-size:13px;color:var(--muted);margin-top:20px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+.addr-line b{color:var(--packet)}
+.addr-line .p{color:var(--accent)}
+
+/* ---------- routing game ---------- */
+.route-table{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-top:16px;font-family:var(--font-mono);font-size:13.5px;color:var(--muted);display:flex;gap:26px;flex-wrap:wrap}
+.route-table b{color:var(--accent)}
+.cable-g{cursor:pointer}
+.cable-g:focus,.node-g:focus{outline:none}
+.cable-g:focus-visible .out-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+.node-g:focus-visible .node-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+.cable-hit{stroke:transparent;stroke-width:30;fill:none}
+.cable{stroke:var(--line);stroke-width:2.5;fill:none;transition:stroke .25s}
+.cable-g:hover .cable,.cable-g.ok .cable{stroke:var(--accent)}
+.cable-g.err .cable{stroke:var(--exposed)}
+.cable-g.err{animation:shake .45s ease}
+.out-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .25s}
+.cable-g:hover .out-box{stroke:var(--accent)}
+.score{font-family:var(--font-mono);font-size:14px;color:var(--accent)}
+
+/* ---------- NAT ---------- */
+.nat-table{margin-top:18px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.nat-table .row{display:grid;grid-template-columns:110px 1fr 1fr;gap:10px;padding:11px 18px;font-family:var(--font-mono);font-size:13px;border-bottom:1px solid var(--line);color:var(--muted)}
+.nat-table .row:last-child{border-bottom:none}
+.nat-table .row.head{color:var(--ink);background:var(--surface);font-weight:600}
+.nat-table .row.new{animation:pop .4s ease}
+.stamp-flash{opacity:0;transform-origin:center}
+.stamp-flash.go{animation:stamp .5s ease}
+@keyframes stamp{0%{opacity:.9;transform:scale(.4)}70%{opacity:.5;transform:scale(1.5)}100%{opacity:0;transform:scale(1.9)}}
+.pkt-lbl{font-family:var(--font-mono);font-size:9.5px;fill:#ADCBFF;text-anchor:middle}
+
+/* ---------- TLS toggle ---------- */
+.toggle-row{display:flex;align-items:center;gap:16px;margin-top:18px;flex-wrap:wrap}
+.switch{position:relative;width:64px;height:34px;flex:0 0 auto}
+.switch input{opacity:0;width:100%;height:100%;position:absolute;cursor:pointer;z-index:2;margin:0}
+.slider{position:absolute;inset:0;background:var(--surface2);border:1px solid var(--line);border-radius:999px;transition:.35s}
+.slider::before{content:'';position:absolute;width:24px;height:24px;left:4px;top:4px;border-radius:50%;background:var(--muted);transition:.35s}
+.switch input:checked+.slider{background:var(--accent-dim);border-color:var(--accent)}
+.switch input:checked+.slider::before{transform:translateX(30px);background:var(--accent)}
+.switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:3px}
+.toggle-label{font-family:var(--font-mono);font-size:14px;color:var(--exposed);transition:color .3s}
+.toggle-label.on{color:var(--accent)}
+.note{background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 18px;margin-top:20px;font-size:14.5px;color:var(--muted)}
+.note b{color:var(--ink)}
+.note.warn{border-left-color:var(--exposed)}
+
+/* ---------- quiz ---------- */
+.quiz{margin-top:28px;display:flex;flex-direction:column;gap:20px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.q h3{font-size:16.5px;margin-bottom:16px;font-weight:600}
+.q label{display:flex;gap:12px;align-items:flex-start;padding:11px 14px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;cursor:pointer;font-size:15px;transition:border-color .25s,background .25s}
+.q label:hover{border-color:var(--muted)}
+.q input{accent-color:var(--accent);margin-top:4px;flex:0 0 auto}
+.q label.right{border-color:var(--accent);background:var(--accent-dim)}
+.q label.wrong{border-color:var(--exposed);background:var(--exposed-dim)}
+.q .expl{display:none;font-size:14px;color:var(--muted);margin-top:10px;padding-top:12px;border-top:1px dashed var(--line)}
+.q.answered .expl{display:block}
+.quiz-score{font-family:var(--font-mono);color:var(--accent);font-size:15px;margin-top:6px;min-height:24px}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line);margin-top:80px;padding:44px 0 70px}
+.next-link{display:inline-flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius);padding:16px 26px;font-weight:600;text-decoration:none;transition:transform .3s,box-shadow .3s}
+.next-link:hover{transform:translateX(6px);box-shadow:0 0 26px rgba(53,224,161,.25)}
+.sources{margin-top:34px}
+.sources h3{font-size:15px;margin-bottom:10px;color:var(--muted);font-weight:600}
+.sources li{font-size:14px;color:var(--muted);margin-left:20px;padding:2px 0}
+.sources a{color:#ADCBFF}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
+  html{scroll-behavior:auto}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<nav id="dots" aria-label="Навигация по секциям">
+  <a href="#hero" data-s="hero"></a>
+  <a href="#city" data-s="city"></a>
+  <a href="#packet" data-s="packet"></a>
+  <a href="#ports" data-s="ports"></a>
+  <a href="#routing" data-s="routing"></a>
+  <a href="#nat" data-s="nat"></a>
+  <a href="#tls" data-s="tls"></a>
+  <a href="#quiz" data-s="quiz"></a>
+</nav>
+
+<main>
+
+<!-- ============ HERO ============ -->
+<section id="hero">
+  <svg id="hero-bg" aria-hidden="true"></svg>
+  <div class="hero-badge">Курс «VPN: как это работает» · <b>Модуль 02</b> / 10</div>
+  <h1>Как работает интернет<br>без VPN</h1>
+  <p class="lead">Прежде чем строить туннели, посмотрим, как посылки данных ездят по «городу» безо всякой магии. Объясняю так, будто тебе десять — зато запомнится навсегда. Дальше будут игры: собери пакет, побудь роутером, загляни в штамп-машину.</p>
+  <div class="hero-games">
+    <span>📦 путь посылки</span><span>🧩 конструктор пакета</span><span>🏢 дом с портами</span>
+    <span>🕹 ты — роутер</span><span>🖇 штамп-машина NAT</span><span>🔐 открытка или сейф</span>
+  </div>
+  <div class="scroll-hint"><span class="arrow">↓</span> Листай — первая игра уже близко</div>
+</section>
+
+<!-- ============ CITY ============ -->
+<section id="city" class="reveal">
+  <div class="kicker">Игра 1 · Город посылок</div>
+  <h2>Интернет — это город, а данные — посылки</h2>
+  <p>Когда ты открываешь сайт, твой запрос режется на <span class="term">пакеты (packets)</span> — маленькие посылки — и едет через весь город: роутер, провайдер, транзитные сети, сервер сайта. Нажми «Отправить посылку» и смотри, кто что с ней делает. Кликай по узлам — ниже появятся карточки-подсказки.</p>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 320" role="img" aria-label="Путь посылки через город интернет">
+      <path class="wire" d="M 100 190 H 860"/>
+      <path id="dnsWire" class="wire-dns" d="M 110 168 Q 260 42 388 62" opacity="0"/>
+      <g class="node-g" data-node="you" tabindex="0" role="button" aria-label="Ваш компьютер">
+        <rect class="node-box" x="30" y="146" width="140" height="88" rx="12"/>
+        <text class="node-label" x="100" y="184">Вы 🏠</text>
+        <text class="node-sub" x="100" y="205">ваш компьютер</text>
+        <text class="node-sub" x="100" y="219">192.168.1.10</text>
+      </g>
+      <g class="node-g" data-node="dns" tabindex="0" role="button" aria-label="DNS, телефонная книга">
+        <rect class="node-box" x="390" y="34" width="150" height="64" rx="12" style="stroke-dasharray:4 5"/>
+        <text class="node-label" x="465" y="60" style="font-size:13px">Справочная 📖</text>
+        <text class="node-sub" x="465" y="78">DNS · «где живёт сайт?»</text>
+      </g>
+      <g class="node-g" data-node="router" tabindex="0" role="button" aria-label="Домашний роутер">
+        <rect class="node-box" x="220" y="146" width="140" height="88" rx="12"/>
+        <text class="node-label" x="290" y="184">Роутер 📮</text>
+        <text class="node-sub" x="290" y="205">районная почта</text>
+        <text class="node-sub" x="290" y="219">Wi-Fi-коробка дома</text>
+      </g>
+      <g class="node-g" data-node="isp" tabindex="0" role="button" aria-label="Провайдер">
+        <rect class="node-box" x="410" y="146" width="140" height="88" rx="12"/>
+        <text class="node-label" x="480" y="184">Провайдер 🏤</text>
+        <text class="node-sub" x="480" y="205">ISP · главный почтамт</text>
+        <text class="node-sub" x="480" y="219">ваш оператор связи</text>
+      </g>
+      <g class="node-g" data-node="net" tabindex="0" role="button" aria-label="Транзитные сети">
+        <rect class="node-box" x="600" y="146" width="140" height="88" rx="12"/>
+        <text class="node-label" x="670" y="184">Интернет 🛣</text>
+        <text class="node-sub" x="670" y="205">транзитные сети</text>
+        <text class="node-sub" x="670" y="219">hop · hop · hop</text>
+      </g>
+      <g class="node-g" data-node="site" tabindex="0" role="button" aria-label="Сервер сайта">
+        <rect class="node-box" x="790" y="146" width="140" height="88" rx="12"/>
+        <text class="node-label" x="860" y="184">Сайт 🏢</text>
+        <text class="node-sub" x="860" y="205">example.com</text>
+        <text class="node-sub" x="860" y="219">93.184.216.34</text>
+      </g>
+      <g id="cityPkt" transform="translate(100,162)">
+        <rect x="-15" y="-11" width="30" height="22" rx="6" fill="var(--packet)"/>
+        <text x="0" y="4.5" text-anchor="middle" font-size="11">📦</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="cityGo">📦 Авто</button>
+    <button class="btn ghost" id="cityPrev" disabled>‹ Назад</button>
+    <button class="btn ghost" id="cityNext">Шаг ›</button>
+    <span class="score" id="cityStep"></span>
+  </div>
+  <div class="speech" id="citySpeech">
+    <span class="ava">🏠</span>
+    <span><span class="who">Вы</span><span class="say">Жми «Авто» — отправлюсь за картинкой кота на example.com! Или листай остановки стрелками «‹ Назад» и «Шаг ›».</span></span>
+  </div>
+
+  <div class="info-cards" id="cityCards">
+    <div class="icard" data-for="you"><h3>🏠 Вы — дом отправителя</h3><p>Твой компьютер. Посылки подписывают твоим адресом <code>192.168.1.10</code> — он «квартирный», внутри домашней сети LAN (Local Area Network — локальная сеть).</p></div>
+    <div class="icard" data-for="dns"><h3>📖 DNS — телефонная книга</h3><p>DNS (Domain Name System — система доменных имён) переводит <code>example.com</code> в число <code>93.184.216.34</code>. Браузер звонит сюда до отправки посылки.</p></div>
+    <div class="icard" data-for="router"><h3>📮 Роутер — районная почта</h3><p>Смотрит адрес: «домой? на стол. в город? несу провайдеру». Заодно штампует посылки внешним адресом — это NAT (про него ниже).</p></div>
+    <div class="icard" data-for="isp"><h3>🏤 Провайдер — главный почтамт</h3><p>ISP (Internet Service Provider — поставщик интернет-услуг). Знает дороги в другие районы и ЗАПИСЫВАЕТ, от кого и куда твои посылки.</p></div>
+    <div class="icard" data-for="net"><h3>🛣 Интернет — трассы</h3><p>Транзитные сети. Посылка прыгает hop (прыжок) за hopом, каждая почта смотрит только адрес получателя и передаёт ближе к цели. Полной карты нет ни у кого!</p></div>
+    <div class="icard" data-for="site"><h3>🏢 Сайт — дом получателя</h3><p>Сервер <code>example.com</code> живёт по адресу <code>93.184.216.34</code> и принимает посылки в «квартиру» 443. Прочитал запрос — собрал ответ и отправил обратно.</p></div>
+  </div>
+</section>
+
+<!-- ============ PACKET BUILDER ============ -->
+<section id="packet" class="reveal">
+  <div class="kicker">Игра 2 · Конструктор</div>
+  <h2>Из чего состоит пакет</h2>
+  <p>Пакет — это конверт с письмом. На конверте — <span class="term">заголовок (header)</span>: кому, от кого и в какую «квартиру»-порт. Внутри — <span class="term">данные (payload)</span>: кусочек твоего запроса. Собери пакет правильно — кликай по деталям внизу.</p>
+
+  <div class="builder">
+    <div class="slots">
+      <div class="slot" data-slot="to"><span class="hint">Кому · IP-адрес сайта</span></div>
+      <div class="slot" data-slot="from"><span class="hint">От кого · ваш IP</span></div>
+      <div class="slot" data-slot="port"><span class="hint">Порт · какой сервис</span></div>
+      <div class="slot" data-slot="data"><span class="hint">Данные · письмо</span></div>
+    </div>
+    <div class="chips" id="chips">
+      <button class="chip" data-target="to">🏷 93.184.216.34</button>
+      <button class="chip" data-target="from">🏠 192.168.1.10</button>
+      <button class="chip" data-target="port">🚪 порт 443</button>
+      <button class="chip" data-target="data">✉️ GET /cat.png</button>
+      <button class="chip" data-target="potato">🥔 картошка</button>
+    </div>
+    <div class="speech" id="builderSpeech" style="margin-top:18px">
+      <span class="ava">🧩</span>
+      <span><span class="who">Задание</span><span class="say">Положи в конверт четыре правильные детали. Пятая тут случайно… или нет?</span></span>
+    </div>
+    <div class="builder-done" id="builderDone">
+      <b>Пакет готов! 📦</b> Обрати внимание: адреса на конверте написаны <b>открыто</b> — их прочитает каждая почта по пути. А вот письмо внутри увидят все, если сайт работает по HTTP (без замочка). Про это — игра «Открытка или сейф» ниже.
+      <div class="mini-track"><div class="mini-pkt" id="miniPkt"></div></div>
+      <div class="btn-row">
+        <button class="btn" id="builderSend">Отправить посылку 🚀</button>
+        <button class="btn ghost" id="builderReset">Собрать заново</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PORTS ============ -->
+<section id="ports" class="reveal">
+  <div class="kicker">Игра 3 · Дом с квартирами</div>
+  <h2>IP-адрес и порт: адрес и домофон</h2>
+  <p>IP (Internet Protocol — интернет-протокол, «язык адресов») говорит, <b>какой дом</b> нам нужен. Порт говорит, <b>в какую квартиру</b> этого дома стучать: в одном доме-сервере живут и сайт, и почта. Кликай по окнам — знакомься с жильцами.</p>
+
+  <div class="addr-line">Адрес целиком: <b>93.184.216.34</b><span class="p">:443</span> &nbsp;→&nbsp; дом <b>93.184.216.34</b>, квартира <span class="p">443</span>. Пишется через двоеточие.</div>
+
+  <div class="port-wrap">
+    <div class="building">
+      <div class="roof"></div>
+      <div class="wins" id="wins">
+        <button class="win" data-port="443"><span class="num">443</span>🔐</button>
+        <button class="win" data-port="80"><span class="num">80</span>🌐</button>
+        <button class="win" data-port="53"><span class="num">53</span>📖</button>
+        <button class="win" data-port="25"><span class="num">25</span>✉️</button>
+        <button class="win" data-port="22"><span class="num">22</span>🛠</button>
+        <button class="win dark" data-port="31337"><span class="num">31337</span>🌑</button>
+        <button class="win" data-port="51820"><span class="num">51820</span>🕳</button>
+        <button class="win dark" data-port="9999"><span class="num">9999</span>🌑</button>
+        <button class="win dark" data-port="12345"><span class="num">12345</span>🌑</button>
+      </div>
+      <p style="color:var(--muted);font-size:13px;margin-top:16px;text-align:center">Дом-сервер · 9 этажей-портов · кликай по окнам</p>
+    </div>
+    <div class="port-card" id="portCard">
+      <div class="big">🚪</div>
+      <h3>Выбери окно</h3>
+      <p>Каждое окно — это порт, номер от 0 до 65535. За популярными номерами исторически закрепились свои сервисы — как за квартирой 1 на первом этаже обычно живёт консьерж.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ROUTING GAME ============ -->
+<section id="routing" class="reveal">
+  <div class="kicker">Игра 4 · Ты — роутер</div>
+  <h2>Куда отправить пакет?</h2>
+  <p>Ты — домашний роутер. К тебе прилетает пакет, а у тебя только шпаргалка-таблица маршрутизации (routing table). Выбери правильный провод! У роутеров в интернете шпаргалки побольше, но принцип тот же: прочитать адрес и передать соседу, который ближе к цели.</p>
+
+  <div class="route-table">
+    <span>📋 Шпаргалка: <b>192.168.*.*</b> → домашняя сеть</span>
+    <span>всё остальное → <b>провайдеру</b></span>
+  </div>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 330" role="img" aria-label="Игра: выбери, куда отправить пакет">
+      <path class="wire" d="M 60 166 H 380"/>
+      <text class="pkt-lbl" id="routeDest" x="44" y="138" style="font-size:13px;text-anchor:start">Кому: …</text>
+      <rect x="44" y="152" width="30" height="22" rx="6" fill="var(--packet)" opacity=".25"/>
+      <rect x="380" y="116" width="160" height="100" rx="14" fill="var(--surface2)" stroke="var(--accent)" stroke-width="2"/>
+      <text class="node-label" x="460" y="156">ВЫ — роутер 🫵</text>
+      <text class="node-sub" x="460" y="178">читаешь адрес</text>
+      <text class="node-sub" x="460" y="192">выбираешь дорогу</text>
+      <g class="cable-g" data-ans="home" tabindex="0" role="button" aria-label="Отправить в домашнюю сеть">
+        <path class="cable-hit" d="M 540 140 C 630 140 630 62 700 62"/>
+        <path class="cable" d="M 540 140 C 630 140 630 62 700 62"/>
+        <rect class="out-box" x="700" y="30" width="190" height="64" rx="12"/>
+        <text class="node-label" x="795" y="58" style="font-size:14px">Домашняя сеть 🏠</text>
+        <text class="node-sub" x="795" y="78">192.168.*.*</text>
+      </g>
+      <g class="cable-g" data-ans="isp" tabindex="0" role="button" aria-label="Отправить провайдеру">
+        <path class="cable-hit" d="M 540 166 H 700"/>
+        <path class="cable" d="M 540 166 H 700"/>
+        <rect class="out-box" x="700" y="134" width="190" height="64" rx="12"/>
+        <text class="node-label" x="795" y="162" style="font-size:14px">Провайдеру 🏤</text>
+        <text class="node-sub" x="795" y="182">всё остальное</text>
+      </g>
+      <g class="cable-g" data-ans="vasya" tabindex="0" role="button" aria-label="Отправить соседу Васе">
+        <path class="cable-hit" d="M 540 192 C 630 192 630 272 700 272"/>
+        <path class="cable" d="M 540 192 C 630 192 630 272 700 272"/>
+        <rect class="out-box" x="700" y="240" width="190" height="64" rx="12"/>
+        <text class="node-label" x="795" y="268" style="font-size:14px">Соседу Васе 🧔</text>
+        <text class="node-sub" x="795" y="288">а вдруг?</text>
+      </g>
+      <g id="routePkt" transform="translate(60,166)" style="opacity:0">
+        <rect x="-13" y="-9" width="26" height="18" rx="5" fill="var(--packet)"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10">📦</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="routeStart">🕹 Начать смену роутера</button>
+    <button class="btn ghost" id="routeReset" style="display:none">Заново</button>
+    <span class="score" id="routeScore"></span>
+  </div>
+  <div class="speech" id="routeSpeech">
+    <span class="ava">📮</span>
+    <span><span class="who">Диспетчер</span><span class="say">Нажми «Начать смену» — пришлю тебе четыре пакета. Ошибёшься — не страшно, подсказка рядом.</span></span>
+  </div>
+</section>
+
+<!-- ============ NAT ============ -->
+<section id="nat" class="reveal">
+  <div class="kicker">Игра 5 · Штамп-машина</div>
+  <h2>NAT: один адрес на всю квартиру</h2>
+  <p>Дома у тебя телефон, ноутбук и телевизор — у каждого свой внутренний адрес <code>192.168.1.x</code>. А провайдер выдал семье <b>один</b> внешний адрес. Кто-то должен подменять адреса на посылках! Этим занимается NAT (Network Address Translation — преобразование сетевых адресов) — штамп-машина внутри роутера. Запусти пакеты и смотри, как она работает.</p>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 300" role="img" aria-label="NAT: роутер штампует пакеты внешним адресом">
+      <path class="wire" d="M 180 72 C 270 72 270 140 360 146"/>
+      <path class="wire" d="M 180 160 H 360"/>
+      <path class="wire" d="M 180 248 C 270 248 270 180 360 174"/>
+      <path class="wire" d="M 510 160 H 600"/>
+      <path class="wire" d="M 750 160 H 800"/>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="30" y="44" width="150" height="56" rx="10"/>
+        <text class="node-label" x="105" y="67" style="font-size:13px">Телефон 📱</text>
+        <text class="node-sub" x="105" y="86">192.168.1.10</text>
+      </g>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="30" y="132" width="150" height="56" rx="10"/>
+        <text class="node-label" x="105" y="155" style="font-size:13px">Ноутбук 💻</text>
+        <text class="node-sub" x="105" y="174">192.168.1.11</text>
+      </g>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="30" y="220" width="150" height="56" rx="10"/>
+        <text class="node-label" x="105" y="243" style="font-size:13px">Телевизор 📺</text>
+        <text class="node-sub" x="105" y="262">192.168.1.12</text>
+      </g>
+      <rect x="360" y="116" width="150" height="88" rx="12" fill="var(--surface2)" stroke="var(--accent)" stroke-width="2"/>
+      <text class="node-label" x="435" y="148" style="font-size:14px">Роутер 🖇</text>
+      <text class="node-sub" x="435" y="168">штамп-машина NAT</text>
+      <text class="node-sub" x="435" y="182" style="fill:var(--accent)">84.201.100.7</text>
+      <circle id="natStamp" class="stamp-flash" cx="435" cy="160" r="26" fill="none" stroke="var(--accent)" stroke-width="3"/>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="600" y="116" width="150" height="88" rx="12"/>
+        <text class="node-label" x="675" y="150" style="font-size:14px">Провайдер 🏤</text>
+        <text class="node-sub" x="675" y="170">видит только</text>
+        <text class="node-sub" x="675" y="184">84.201.100.7</text>
+      </g>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="800" y="132" width="120" height="56" rx="10"/>
+        <text class="node-label" x="860" y="155" style="font-size:13px">Интернет 🛣</text>
+        <text class="node-sub" x="860" y="174">дальше в мир</text>
+      </g>
+      <g id="natPkt" transform="translate(105,160)" style="opacity:0">
+        <rect x="-12" y="-9" width="24" height="18" rx="5" fill="var(--packet)"/>
+        <text class="pkt-lbl" id="natLbl" x="0" y="-16">от …</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="natGo">🖇 Отправить пакеты всей семьи</button>
+  </div>
+  <div class="speech" id="natSpeech">
+    <span class="ava">📱</span>
+    <span><span class="who">Телефон</span><span class="say">Я хочу в интернет, но мой адрес 192.168.1.10 снаружи никто не знает! Роутер, выручай…</span></span>
+  </div>
+
+  <div class="nat-table" id="natTable">
+    <div class="row head"><span>Устройство</span><span>Внутренний адрес</span><span>Внешний (после штампа)</span></div>
+  </div>
+  <div class="note">Роутер ведёт блокнот: какой внешний «квартирный номер» какому устройству выдан. Ответ приходит на <code>84.201.100.7:62001</code> — роутер смотрит в блокнот и несёт его телефону. Для всего интернета ваша семья — <b>один адрес</b>. Спойлер: VPN-сервер делает похожий фокус со <i>своим</i> адресом — так и «меняется IP».</div>
+</section>
+
+<!-- ============ TLS ============ -->
+<section id="tls" class="reveal">
+  <div class="kicker">Игра 6 · Открытка или сейф</div>
+  <h2>HTTP и HTTPS: что читает провайдер</h2>
+  <p>Посылка доехала. Но <b>кто по пути смог прочитать твоё письмо</b>? Зависит от того, как сайт принимает гостей: по HTTP (HyperText Transfer Protocol — протокол передачи гипертекста) письмо едет открыткой, а по HTTPS (HyperText Transfer Protocol Secure — тот же протокол, но зашифрованный) — в запертом сейфе. Сейф запирает TLS (Transport Layer Security — «безопасность транспортного уровня», протокол шифрования). Щёлкай переключателем и отправляй запрос!</p>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 240" role="img" aria-label="HTTP против HTTPS: что видит провайдер">
+      <path class="wire" d="M 100 126 H 860"/>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="30" y="86" width="140" height="80" rx="12"/>
+        <text class="node-label" x="100" y="120" style="font-size:14px">Вы 🏠</text>
+        <text class="node-sub" x="100" y="140">отправляете запрос</text>
+      </g>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="410" y="86" width="140" height="80" rx="12"/>
+        <text class="node-label" x="480" y="116" style="font-size:14px">Провайдер 🏤</text>
+        <text class="node-sub" x="480" y="136">🔍 любопытный</text>
+        <text class="node-sub" x="480" y="150">по дороге</text>
+      </g>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="790" y="86" width="140" height="80" rx="12"/>
+        <text class="node-label" x="860" y="120" style="font-size:14px">Сайт 🏢</text>
+        <text class="node-sub" x="860" y="140">пример.com · 443</text>
+      </g>
+      <g id="tlsPkt" transform="translate(100,98)">
+        <g id="postcard">
+          <rect x="-22" y="-14" width="44" height="28" rx="4" fill="var(--paper)"/>
+          <line x1="-15" y1="-6" x2="15" y2="-6" stroke="#9A8C63" stroke-width="2"/>
+          <line x1="-15" y1="0" x2="15" y2="0" stroke="#9A8C63" stroke-width="2"/>
+          <line x1="-15" y1="6" x2="6" y2="6" stroke="#9A8C63" stroke-width="2"/>
+        </g>
+        <g id="safebox" style="display:none">
+          <rect x="-20" y="-15" width="40" height="30" rx="6" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="0" y="5" text-anchor="middle" font-size="14">🔒</text>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <div class="toggle-row">
+    <span class="switch">
+      <input type="checkbox" id="httpsToggle" aria-label="Включить HTTPS">
+      <span class="slider"></span>
+    </span>
+    <span class="toggle-label" id="tlsLabel">HTTP — письмо открыткой, читает любой по пути</span>
+  </div>
+  <div class="btn-row">
+    <button class="btn" id="tlsGo">📨 Отправить запрос</button>
+  </div>
+  <div class="speech" id="tlsSpeech">
+    <span class="ava">🏤</span>
+    <span><span class="who">Провайдер</span><span class="say">Переключай режимы и отправляй запрос. Мне-то всё равно видно, от кого посылка… но что внутри — большой вопрос.</span></span>
+  </div>
+  <div class="note warn"><b>Но!</b> Даже с HTTPS провайдер видит <b>домен</b> — из DNS-запроса и из поля SNI (Server Name Indication — «указание имени сервера») при установке TLS-соединения. Полностью скрывают и домены только VPN-туннели — как именно, разберём в модуле 03 и 05.</div>
+</section>
+
+<!-- ============ QUIZ ============ -->
+<section id="quiz" class="reveal">
+  <div class="kicker">Проверка</div>
+  <h2>Мини-квиз: почта сдана?</h2>
+  <div class="quiz" id="quizBox"></div>
+  <div class="quiz-score" id="quizScore"></div>
+</section>
+
+<footer>
+  <a class="next-link" href="./03-tunnel-i-perehvat-trafika.html">Дальше: как VPN перехватывает трафик <span>→</span></a>
+  <div class="sources">
+    <h3>Источники</h3>
+    <ul>
+      <li>RFC 791 — Internet Protocol (устройство IP-пакетов и адресов): <a href="https://datatracker.ietf.org/doc/html/rfc791">datatracker.ietf.org/doc/html/rfc791</a></li>
+      <li>RFC 793 — Transmission Control Protocol (надёжная доставка): <a href="https://datatracker.ietf.org/doc/html/rfc793">datatracker.ietf.org/doc/html/rfc793</a></li>
+      <li>RFC 3022 — Traditional IP Network Address Translator (NAT): <a href="https://datatracker.ietf.org/doc/html/rfc3022">datatracker.ietf.org/doc/html/rfc3022</a></li>
+      <li>RFC 8446 — TLS 1.3 (шифрование в HTTPS): <a href="https://datatracker.ietf.org/doc/html/rfc8446">datatracker.ietf.org/doc/html/rfc8446</a></li>
+      <li>MDN — Как работает интернет: <a href="https://developer.mozilla.org/ru/docs/Learn_web_development/Howto/Web_mechanics/How_does_the_Internet_work">developer.mozilla.org (ru)</a></li>
+      <li>MDN — What is a URL: <a href="https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL">developer.mozilla.org</a></li>
+    </ul>
+  </div>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:30px;font-family:var(--font-mono)">documents_hub / vpn · модуль 02 · статус: draft</p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, RM ? Math.min(ms, 300) : ms));
+
+/* ================= reveal / progress / dots ================= */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+const sections = [...document.querySelectorAll('section')];
+const dots = [...document.querySelectorAll('#dots a')];
+function onScroll(){
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  let cur = sections[0].id;
+  for (const s of sections){ if (s.getBoundingClientRect().top < innerHeight * 0.4) cur = s.id; }
+  dots.forEach(d => d.classList.toggle('on', d.dataset.s === cur));
+}
+addEventListener('scroll', onScroll, { passive:true }); onScroll();
+
+/* ================= shared helpers ================= */
+function speak(strip, ava, who, text, bad){
+  strip.className = 'speech pop' + (bad ? ' bad' : '');
+  strip.innerHTML = '';
+  const a = document.createElement('span'); a.className = 'ava'; a.textContent = ava;
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
+  const s = document.createElement('span'); s.className = 'say'; s.textContent = text;
+  const wrap = document.createElement('span'); wrap.appendChild(w); wrap.appendChild(s);
+  strip.appendChild(a); strip.appendChild(wrap);
+}
+
+function movePkt(g, from, to, dur, cancelFn){
+  return new Promise(res => {
+    const t0 = performance.now();
+    if (RM){ g.setAttribute('transform', `translate(${to[0]},${to[1]})`); res(); return; }
+    function step(now){
+      if (cancelFn && cancelFn()){ res(); return; }
+      const k = Math.min((now - t0) / dur, 1);
+      const x = from[0] + (to[0] - from[0]) * k;
+      const y = from[1] + (to[1] - from[1]) * k;
+      g.setAttribute('transform', `translate(${x},${y})`);
+      if (k < 1) requestAnimationFrame(step); else res();
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+/* ================= game 1: city journey ================= */
+(function city(){
+  const pkt = document.getElementById('cityPkt');
+  const btn = document.getElementById('cityGo');
+  const prevBtn = document.getElementById('cityPrev');
+  const nextBtn = document.getElementById('cityNext');
+  const counter = document.getElementById('cityStep');
+  const strip = document.getElementById('citySpeech');
+  const dnsWire = document.getElementById('dnsWire');
+  const intro = strip.innerHTML;
+  const START = [100,162];
+  let running = false, autoCancel = false, busy = false, idx = -1, cur = START.slice();
+
+  function applyStep(i){
+    const st = steps[i];
+    dnsWire.style.transition = 'opacity .4s';
+    dnsWire.style.opacity = st.dnsOn ? 1 : 0;
+    speak(strip, st.ava, st.who, st.say);
+    counter.textContent = `шаг ${i+1} из ${steps.length}`;
+    prevBtn.disabled = i <= 0;
+    nextBtn.disabled = i >= steps.length - 1;
+  }
+  function resetToStart(){
+    idx = -1; cur = START.slice();
+    pkt.setAttribute('transform', `translate(${cur[0]},${cur[1]})`);
+    dnsWire.style.opacity = 0;
+    strip.innerHTML = intro;
+    counter.textContent = `шаг 0 из ${steps.length}`;
+    prevBtn.disabled = true; nextBtn.disabled = false;
+  }
+  async function goto(i){
+    busy = true;
+    await movePkt(pkt, cur, steps[i].p, 900, () => autoCancel);
+    cur = steps[i].p.slice();
+    if (autoCancel){ busy = false; return; }
+    idx = i; busy = false;
+    applyStep(i);
+  }
+  async function arrow(dir){
+    if (running) autoCancel = true;
+    while (busy || running) await sleep(60);
+    autoCancel = false;
+    const t = idx + dir;
+    if (t < 0 || t >= steps.length) return;
+    await goto(t);
+  }
+  prevBtn.addEventListener('click', () => arrow(-1));
+  nextBtn.addEventListener('click', () => arrow(1));
+
+  const steps = [
+    { p:[100,162],  ava:'🏠', who:'Вы',          say:'Хочу картинку кота с example.com! Но сети понимают только числа-адреса… Звоню в справочную DNS.' },
+    { p:[390,70],   ava:'📖', who:'DNS-справочная', say:'example.com живёт по адресу 93.184.216.34. Записывай!', dnsOn:true },
+    { p:[100,162],  ava:'🏠', who:'Вы',          say:'Спасибо! Подписываю конверт: от 192.168.1.10, кому 93.184.216.34, в квартиру 443. Поехали!' },
+    { p:[290,162],  ava:'📮', who:'Роутер',      say:'Прочитал адрес получателя. Это не ко мне домой — штампуешь внешний адрес и несёшь провайдеру!' },
+    { p:[480,162],  ava:'🏤', who:'Провайдер',   say:'Так-так, 93.184.216.34… не мой район, знаю кому передать. И ЗАПИСЫВАЮ в журнал: клиент 84.201.100.7 пошёл туда-то 📝' },
+    { p:[670,162],  ava:'🛣', who:'Интернет',    say:'Hop! Hop! Hop! Каждая почта смотрит только адрес получателя и передаёт дальше. Полной карты дорог нет ни у кого — и всё работает.' },
+    { p:[860,162],  ava:'🏢', who:'Сайт',        say:'Посылка для меня, в квартиру 443! Читаю: «покажи кота». Собираю картинку и отправляю ответ ОБРАТНО тем же путём.' },
+    { p:[100,162],  ava:'🏠', who:'Вы',          say:'Ответ дома! Кот на экране. Весь путь занял меньше секунды ⚡' }
+  ];
+
+  document.querySelectorAll('#city .node-g').forEach(g => {
+    const act = () => {
+      document.querySelectorAll('#city .node-g').forEach(x => x.classList.remove('sel'));
+      g.classList.add('sel');
+      const card = document.querySelector(`#cityCards .icard[data-for="${g.dataset.node}"]`);
+      if (card){
+        document.querySelectorAll('#cityCards .icard.sel').forEach(x => x.classList.remove('sel'));
+        card.classList.add('sel');
+        card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+        card.scrollIntoView({ block:'nearest', behavior:'smooth' });
+      }
+    };
+    g.addEventListener('click', act);
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); act(); } });
+  });
+
+  btn.addEventListener('click', async () => {
+    if (running) return;
+    if (idx >= steps.length - 1) resetToStart();
+    running = true; autoCancel = false; btn.disabled = true;
+    while (!autoCancel && idx < steps.length - 1){
+      await goto(idx + 1);
+      if (autoCancel) break;
+      for (let w = 0; w < 1900 && !autoCancel; w += 60) await sleep(60);
+    }
+    running = false; btn.disabled = false;
+    btn.textContent = idx >= steps.length - 1 ? '📦 Ещё разок' : '📦 Авто';
+    prevBtn.disabled = idx <= 0; nextBtn.disabled = idx >= steps.length - 1;
+  });
+
+  resetToStart();
+})();
+
+/* ================= game 2: packet builder ================= */
+(function builder(){
+  const strip = document.getElementById('builderSpeech');
+  const done = document.getElementById('builderDone');
+  const chips = [...document.querySelectorAll('#chips .chip')];
+  let filled = 0;
+
+  const GOOD = {
+    to:   'Адрес получателя на месте! По этому числу посылку найдёт любая почта в городе.',
+    from: 'Адрес отправителя записан. Вот по нему сайт и узнает, КТО просил кота — и куда слать ответ.',
+    port: 'Порт 443 — «квартира» защищённого веба (HTTPS). Без порта сервер не понял бы, какому сервису отдать посылку.',
+    data: 'Письмо внутри: «GET /cat.png» — то есть «покажи главную»… вернее, кота. Это и есть полезная нагрузка (payload).'
+  };
+
+  chips.forEach(c => c.addEventListener('click', () => {
+    const t = c.dataset.target;
+    if (t === 'potato'){
+      c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
+      speak(strip, '🥔', 'Картошка', 'Меня в пакет не клади! Я — вкусная, но не данные. Пакеты интернета — не посылки с дачи 😄', true);
+      return;
+    }
+    const slot = document.querySelector(`.slot[data-slot="${t}"]`);
+    if (!slot || slot.classList.contains('done')) return;
+    slot.classList.add('done');
+    const d = document.createElement('div'); d.className = 'filled'; d.textContent = c.textContent.replace(/^[^\s]+\s/, '');
+    slot.appendChild(d);
+    c.disabled = true; filled++;
+    speak(strip, '🧩', 'Слот заполнен', GOOD[t]);
+    if (filled === 4){
+      done.classList.add('show');
+      speak(strip, '📦', 'Пакет собран!', 'Конверт подписан, письмо внутри. Жми «Отправить» — и он помчится по проводам!');
+    }
+  }));
+
+  document.getElementById('builderSend').addEventListener('click', () => {
+    const p = document.getElementById('miniPkt');
+    p.classList.remove('go'); void p.offsetWidth; p.classList.add('go');
+    speak(strip, '🚀', 'Посылка ушла!', 'И помни: адреса на конверте прочитали все почты по пути. А содержимое? Зависит от HTTP или HTTPS — проверь в игре ниже!');
+  });
+
+  document.getElementById('builderReset').addEventListener('click', () => {
+    filled = 0;
+    document.querySelectorAll('.slot').forEach(s => { s.classList.remove('done'); s.querySelector('.filled')?.remove(); });
+    chips.forEach(c => c.disabled = false);
+    done.classList.remove('show');
+    document.getElementById('miniPkt').classList.remove('go');
+    speak(strip, '🧩', 'Задание', 'Положи в конверт четыре правильные детали. Пятая тут случайно… или нет?');
+  });
+})();
+
+/* ================= game 3: ports ================= */
+(function ports(){
+  const PORTS = {
+    443:   { e:'🔐', t:'Порт 443 — защищённый веб (HTTPS)', p:'Тут живёт весь современный интернет: сайты с замочком в адресной строке. Посылки в эту квартиру заперты в TLS-сейф.' },
+    80:    { e:'🌐', t:'Порт 80 — обычный веб (HTTP)', p:'Старая добрая квартира открытых писем. Без шифрования — провайдер читает содержимое. Современные сайты переехали на 443.' },
+    53:    { e:'📖', t:'Порт 53 — телефонная книга (DNS)', p:'Сюда стучатся с вопросом «где живёт example.com?» и получают число-адрес. До отправки основной посылки.' },
+    25:    { e:'✉️', t:'Порт 25 — почта (SMTP)', p:'SMTP (Simple Mail Transfer Protocol — простой протокол передачи почты). Почтальоны между серверами ходят именно в эту квартиру.' },
+    22:    { e:'🛠', t:'Порт 22 — комната админа (SSH)', p:'SSH (Secure Shell — «безопасная оболочка»). Сюда заходят системные администраторы — управлять сервером через зашифрованный терминал.' },
+    51820: { e:'🕳', t:'Порт 51820 — потайная дверь (WireGuard)', p:'Через эту квартиру VPN-протокол WireGuard строит зашифрованные туннели. Мы встретимся с ней в модулях 03 и 06!' },
+    31337: { e:'🌑', t:'Тёмное окно 31337', p:'Здесь никто не живёт — порт свободен. Посылка в пустую квартиру просто отбрасывается: «адресат не проживает».' },
+    9999:  { e:'🌑', t:'Тёмное окно 9999', p:'Пусто. Всего портов 65536, и заняты из них от силы пара десятков — остальные ждут своих жильцов.' },
+    12345: { e:'🌑', t:'Тёмное окно 12345', p:'И тут никого. Любое приложение может снять любую свободную «квартиру» — например, игры и мессенджеры так и делают.' }
+  };
+  const card = document.getElementById('portCard');
+  document.querySelectorAll('#wins .win').forEach(w => w.addEventListener('click', () => {
+    document.querySelectorAll('#wins .win').forEach(x => x.classList.remove('lit'));
+    w.classList.add('lit');
+    const d = PORTS[w.dataset.port];
+    card.innerHTML = `<div class="big">${d.e}</div><h3>${d.t}</h3><p>${d.p}</p>`;
+  }));
+})();
+
+/* ================= game 4: routing ================= */
+(function routing(){
+  const ROUNDS = [
+    { dest:'192.168.1.15',   ans:'home',  ok:'Верно! 192.168 — свои, домашние. Неси на второй этаж, там телефон живёт.', badHint:'192.168.*.* — это домашняя сеть. Своих не сдаём!' },
+    { dest:'93.184.216.34',  ans:'isp',   ok:'Точно! Не наш адрес — значит, главному почтамту. Провайдер знает дорогу дальше.', badHint:'Адрес не начинается на 192.168 — значит, это внешний мир. Всю внешнюю почту несём провайдеру.' },
+    { dest:'8.8.8.8',        ans:'isp',   ok:'Красава! Это знаменитый DNS-сервер Google — тоже внешний, значит, провайдеру.', badHint:'8.8.8.8 — внешний адрес (сервер Google). Шпаргалка говорит: всё не-192.168 → провайдеру.' },
+    { dest:'192.168.1.99',   ans:'home',  ok:'Идеально! Свой-свой, домашний. Пакет доехал до принтера 🖨', badHint:'Смотри на первые цифры: 192.168 — домашняя сеть.' }
+  ];
+  const END = { home:[795,62], isp:[795,166], vasya:[795,272] };
+  const pkt = document.getElementById('routePkt');
+  const destLbl = document.getElementById('routeDest');
+  const strip = document.getElementById('routeSpeech');
+  const score = document.getElementById('routeScore');
+  const startBtn = document.getElementById('routeStart');
+  const resetBtn = document.getElementById('routeReset');
+  let i = 0, pts = 0, running = false, started = false;
+
+  function showRound(){
+    const r = ROUNDS[i];
+    destLbl.textContent = 'Кому: ' + r.dest;
+    pkt.style.opacity = 0;
+    speak(strip, '📮', `Пакет ${i+1} из ${ROUNDS.length}`, `Прилетел пакет. Адрес получателя: ${r.dest}. Куда отправишь — домой, провайдеру или Васе?`);
+  }
+
+  async function answer(ans, gEl){
+    if (running || !started || i >= ROUNDS.length) return;
+    const r = ROUNDS[i];
+    if (ans === r.ans){
+      running = true; pts++;
+      score.textContent = `✅ ${pts} / ${ROUNDS.length}`;
+      gEl.classList.add('ok');
+      pkt.style.opacity = 1;
+      speak(strip, '📦', 'Пакет', r.ok);
+      await movePkt(pkt, [60,166], END[ans], 850);
+      gEl.classList.remove('ok');
+      i++;
+      await sleep(900);
+      if (i < ROUNDS.length){ showRound(); }
+      else {
+        speak(strip, '🏆', 'Смена окончена', pts === ROUNDS.length
+          ? `Без единой ошибки! Ты — официальный роутер этого дома 🫡 Маршрутизация — это вот так просто: прочитал адрес, сверился со шпаргалкой, передал соседу ближе к цели.`
+          : `Готово: ${pts} из ${ROUNDS.length}. У настоящих роутеров в шпаргалке тысячи строк, но принцип тот же. Попробуй ещё раз — выступи на все сто!`);
+        startBtn.style.display = 'none'; resetBtn.style.display = '';
+      }
+      running = false;
+    } else {
+      gEl.classList.add('err');
+      speak(strip, '❌', 'Мимо!', ans === 'vasya'
+        ? 'Вася, конечно, парень хороший, но пакет-то не ему! Смотри в шпаргалку.' : r.badHint, true);
+      setTimeout(() => gEl.classList.remove('err'), 500);
+    }
+  }
+
+  document.querySelectorAll('.cable-g').forEach(g => {
+    g.addEventListener('click', () => answer(g.dataset.ans, g));
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); answer(g.dataset.ans, g); } });
+  });
+
+  function start(){
+    started = true; running = false; startBtn.disabled = true;
+    showRound();
+  }
+  startBtn.addEventListener('click', start);
+  resetBtn.addEventListener('click', () => {
+    i = 0; pts = 0; score.textContent = '';
+    resetBtn.style.display = 'none'; startBtn.style.display = ''; startBtn.disabled = false;
+    speak(strip, '📮', 'Диспетчер', 'Новая смена! Жми «Начать смену роутера».');
+  });
+})();
+
+/* ================= game 5: NAT ================= */
+(function nat(){
+  const DEVICES = [
+    { name:'Телефон 📱', y:72,  inner:'192.168.1.10:40001', outer:'84.201.100.7:62001' },
+    { name:'Ноутбук 💻', y:160, inner:'192.168.1.11:51000', outer:'84.201.100.7:62002' },
+    { name:'Телевизор 📺', y:248, inner:'192.168.1.12:33000', outer:'84.201.100.7:62003' }
+  ];
+  const pkt = document.getElementById('natPkt');
+  const lbl = document.getElementById('natLbl');
+  const stamp = document.getElementById('natStamp');
+  const strip = document.getElementById('natSpeech');
+  const table = document.getElementById('natTable');
+  const btn = document.getElementById('natGo');
+  let running = false;
+
+  btn.addEventListener('click', async () => {
+    if (running) return;
+    running = true; btn.disabled = true;
+    for (const d of DEVICES){
+      pkt.style.opacity = 1;
+      pkt.setAttribute('transform', `translate(105,${d.y})`);
+      lbl.textContent = 'от ' + d.inner;
+      speak(strip, d.name.slice(-2), d.name, `Мой пакет подписан внутренним адресом ${d.inner}. Снаружи его не доставят — у роутера есть штамп!`);
+      await movePkt(pkt, [105,d.y], [435,160], 900);
+      lbl.textContent = 'от ' + d.outer;
+      stamp.classList.remove('go'); void stamp.getBBox(); stamp.classList.add('go');
+      speak(strip, '🖇', 'Роутер (NAT)', `ШТАМП! Зачеркнул ${d.inner}, написал ${d.outer}. Записал в блокнот: 6200x — это ${d.name.toLowerCase()}.`);
+      const row = document.createElement('div'); row.className = 'row new';
+      row.innerHTML = `<span>${d.name}</span><span>${d.inner}</span><span style="color:var(--accent)">${d.outer}</span>`;
+      table.appendChild(row);
+      await sleep(1200);
+      await movePkt(pkt, [435,160], [675,160], 700);
+      speak(strip, '🏤', 'Провайдер', 'О, опять 84.201.100.7. Понятия не имею, кто из ваших устройств это прислал — для меня вы все ОДИН адрес.');
+      await movePkt(pkt, [675,160], [860,160], 600);
+      await sleep(700);
+    }
+    pkt.style.opacity = 0;
+    speak(strip, '🎓', 'Мораль', 'NAT прячет всю семью за одним адресом. VPN делает похожий фокус: сайт увидит адрес VPN-сервера, а не твой. Как именно — в модуле 04!');
+    running = false; btn.disabled = false; btn.textContent = '🖇 Ещё разок';
+  });
+})();
+
+/* ================= game 6: TLS ================= */
+(function tls(){
+  const tog = document.getElementById('httpsToggle');
+  const label = document.getElementById('tlsLabel');
+  const btn = document.getElementById('tlsGo');
+  const strip = document.getElementById('tlsSpeech');
+  const pkt = document.getElementById('tlsPkt');
+  const postcard = document.getElementById('postcard');
+  const safebox = document.getElementById('safebox');
+  let running = false;
+
+  function paint(){
+    const on = tog.checked;
+    postcard.style.display = on ? 'none' : '';
+    safebox.style.display = on ? '' : 'none';
+    label.textContent = on ? 'HTTPS — письмо в запертом сейфе 🔒' : 'HTTP — письмо открыткой, читает любой по пути';
+    label.classList.toggle('on', on);
+  }
+  tog.addEventListener('change', paint); paint();
+
+  btn.addEventListener('click', async () => {
+    if (running) return;
+    running = true; btn.disabled = true;
+    const on = tog.checked;
+    pkt.setAttribute('transform', 'translate(100,98)');
+    speak(strip, '🏠', 'Вы', on
+      ? 'Кладу письмо в сейф, запираю TLS-замком. Ключ — только у меня и у сайта. Отправляю!'
+      : 'Пишу открыткой: «Привет! Мой пароль 12345». Что может пойти не так…');
+    await movePkt(pkt, [100,98], [480,98], 1200);
+    speak(strip, '🏤', 'Провайдер 🔍', on
+      ? 'Хмык… вижу сейф. Ни письма, ни пароля — только адреса на упаковке, объём и время. Бесит. 🤷'
+      : 'О-па, открытка! Читаю: «пароль 12345»… записал в журнал. Вот так утекают данные по HTTP. 😱', true);
+    await sleep(1600);
+    await movePkt(pkt, [480,98], [860,98], 1200);
+    speak(strip, '🏢', 'Сайт', on
+      ? 'Достаю свой ключ, открываю сейф — письмо целое и секретное. Так работает TLS на HTTPS.'
+      : 'Прочитал открытку. Работает… но по дороге её прочитал кто угодно. Поэтому весь интернет переехал на HTTPS.');
+    running = false; btn.disabled = false;
+  });
+})();
+
+/* ================= quiz ================= */
+(function quiz(){
+  const QUIZ = [
+    { q: 'Что такое IP-адрес?',
+      a: ['Домашний адрес устройства в интернете', 'Пароль от Wi-Fi', 'Название сайта буквами'], right: 0,
+      ex: 'IP (Internet Protocol — интернет-протокол) задаёт числовые адреса вроде 93.184.216.34 — по ним посылки находят нужный «дом».' },
+    { q: 'Зачем нужна DNS (Domain Name System — система доменных имён)?',
+      a: ['Шифрует ваши письма', 'Переводит имя сайта в IP-адрес', 'Ускоряет интернет ночью'], right: 1,
+      ex: 'DNS — телефонная книга: «example.com? Это 93.184.216.34». Браузер звонит туда до отправки пакетов.' },
+    { q: 'Что такое порт?',
+      a: ['Розетка для кабеля', 'Номер «квартиры» — какому сервису на устройстве несут пакет', 'Кнопка включения интернета'], right: 1,
+      ex: 'IP указывает дом, порт — квартиру: 443 для HTTPS-сайта, 53 для DNS, 22 для админа. Запись выглядит как 93.184.216.34:443.' },
+    { q: 'Что делает NAT (Network Address Translation) в домашнем роутере?',
+      a: ['Прячет все устройства семьи за одним внешним адресом', 'Шифрует все ваши письма', 'Делает интернет быстрее'], right: 0,
+      ex: 'NAT штампует на исходящих пакетах внешний адрес роутера вместо внутренних 192.168.x.x и ведёт блокнот, кому нести ответы. Шифрованием он не занимается!' },
+    { q: 'Что видит провайдер, когда вы сидите на сайте с HTTPS?',
+      a: ['Вообще ничего', 'Всё содержимое переписки', 'Ваш IP, домен, время и объём — но не содержимое писем'], right: 2,
+      ex: 'TLS-сейф прячет содержимое, но конверт открыт: IP-адреса видны всегда, домен утекает через DNS и SNI (Server Name Indication — указание имени сервера). Полностью скрывает домены VPN — модуль 03.' }
+  ];
+  const qBox = document.getElementById('quizBox');
+  let answered = 0, correct = 0;
+  QUIZ.forEach((item, qi) => {
+    const d = document.createElement('div'); d.className = 'q reveal';
+    const h = document.createElement('h3'); h.textContent = `Вопрос ${qi+1}. ${item.q}`;
+    d.appendChild(h);
+    item.a.forEach((txt, ai) => {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="radio" name="q${qi}" value="${ai}"><span>${txt}</span>`;
+      l.querySelector('input').addEventListener('change', () => {
+        if (d.classList.contains('answered')) return;
+        d.classList.add('answered');
+        const labels = [...d.querySelectorAll('label')];
+        labels[item.right].classList.add('right');
+        if (ai !== item.right) labels[ai].classList.add('wrong'); else correct++;
+        answered++;
+        const ex = document.createElement('div'); ex.className = 'expl'; ex.textContent = item.ex; d.appendChild(ex);
+        labels.forEach(x => x.querySelector('input').disabled = true);
+        document.getElementById('quizScore').textContent = answered === QUIZ.length ? `Результат: ${correct} / ${QUIZ.length}` : '';
+      });
+      d.appendChild(l);
+    });
+    qBox.appendChild(d);
+    io.observe(d);
+  });
+})();
+
+/* ================= hero background ================= */
+(function heroBg(){
+  if (RM) return;
+  const svg = document.getElementById('hero-bg');
+  svg.setAttribute('viewBox','0 0 1060 600'); svg.setAttribute('preserveAspectRatio','xMidYMid slice');
+  for (let i = 0; i < 14; i++){
+    const y = 30 + Math.random() * 540, dur = 9 + Math.random() * 14, delay = -Math.random() * dur;
+    const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x','-30'); r.setAttribute('y', y); r.setAttribute('width', 16 + Math.random()*22);
+    r.setAttribute('height','5'); r.setAttribute('rx','2.5');
+    r.setAttribute('fill', Math.random() < .3 ? 'var(--accent)' : 'var(--line)');
+    r.style.opacity = .25 + Math.random()*.4;
+    const a = document.createElementNS('http://www.w3.org/2000/svg','animate');
+    a.setAttribute('attributeName','x'); a.setAttribute('from','-40'); a.setAttribute('to','1100');
+    a.setAttribute('dur', dur + 's'); a.setAttribute('begin', delay + 's'); a.setAttribute('repeatCount','indefinite');
+    r.appendChild(a); svg.appendChild(r);
+  }
+})();
+</script>
+</body>
+</html>

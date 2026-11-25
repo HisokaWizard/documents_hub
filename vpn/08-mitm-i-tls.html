@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Модуль 08 · MITM и TLS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0A0E13;--surface:#111823;--surface2:#18212E;--line:#232F3F;--ink:#E8EEF4;--muted:#8A97A4;--accent:#35E0A1;--accent-dim:rgba(53,224,161,.14);--exposed:#FF7A6B;--exposed-dim:rgba(255,122,107,.13);--packet:#58A6FF;--radius:14px;--font-head:'Unbounded',system-ui,sans-serif;--font-body:'Golos Text',system-ui,sans-serif;--font-mono:'JetBrains Mono',ui-monospace,monospace}
+*{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:#04120C}
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:100;transition:width .15s linear}
+#dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;z-index:90}
+#dots a{width:9px;height:9px;border-radius:50%;background:var(--line);display:block;transition:all .3s}
+#dots a.on{background:var(--accent);transform:scale(1.45)}
+@media(max-width:900px){#dots{display:none}}
+main{max-width:1060px;margin:0 auto;padding:0 28px}
+section{padding:96px 0 40px;min-height:60vh}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:none}
+.kicker{font-family:var(--font-mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1{font-family:var(--font-head);font-weight:800;font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.01em}
+h2{font-family:var(--font-head);font-weight:600;font-size:clamp(22px,3.2vw,32px);line-height:1.25;margin-bottom:18px}
+h3{font-size:17px;font-weight:700}
+p.lead{color:var(--muted);font-size:19px;max-width:680px;margin-top:18px}
+p+p{margin-top:14px}
+.term{color:var(--accent);font-weight:600}
+code,.mono{font-family:var(--font-mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:#BFD4E6}
+#hero{min-height:92vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+#hero-bg{position:absolute;inset:0;pointer-events:none;opacity:.5}
+.hero-badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;margin-bottom:26px;width:max-content}
+.hero-badge b{color:var(--accent);font-weight:600}
+.scroll-hint{margin-top:56px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:10px}
+.scroll-hint .arrow{display:inline-block;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+.hero-games{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.hero-games span{font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--surface)}
+.scene-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:26px;position:relative}
+.scene-svg{width:100%;height:auto;display:block}
+.node-g{cursor:pointer}.node-g .node-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .3s,fill .3s}
+.node-g:hover .node-box,.node-g.sel .node-box{stroke:var(--accent)}.node-g.sel .node-box{fill:#16211C}
+.node-label{font-family:var(--font-body);font-size:14px;font-weight:600;fill:var(--ink);text-anchor:middle}
+.node-sub{font-family:var(--font-mono);font-size:10px;fill:var(--muted);text-anchor:middle}
+.wire{stroke:var(--line);stroke-width:2;fill:none}
+.pkt-lbl{font-family:var(--font-mono);font-size:9.5px;fill:#ADCBFF;text-anchor:middle}
+.node-g:focus{outline:none}
+.node-g:focus-visible .node-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+.btn{display:inline-flex;align-items:center;gap:9px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:11px;padding:11px 20px;font-family:var(--font-body);font-size:15px;font-weight:600;cursor:pointer;transition:transform .25s,box-shadow .25s,opacity .25s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 0 20px rgba(53,224,161,.22)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.btn.ghost{background:none;border-color:var(--line);color:var(--muted)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
+.score{font-family:var(--font-mono);font-size:14px;color:var(--accent)}
+.speech{display:flex;gap:13px;align-items:flex-start;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:13px 17px;margin-top:16px;font-size:15px;min-height:56px;line-height:1.5}
+.speech .ava{font-size:22px;line-height:1.2;flex:0 0 auto}
+.speech .who{font-family:var(--font-mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:2px}
+.speech .say{color:var(--ink)}
+.speech.pop{animation:pop .35s ease}
+@keyframes pop{0%{transform:scale(.97);opacity:.4}100%{transform:scale(1);opacity:1}}
+.speech.bad .who{color:var(--exposed)}
+.info-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px}
+.info-cards.three{grid-template-columns:repeat(3,1fr)}
+@media(max-width:980px){.info-cards,.info-cards.three{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.info-cards,.info-cards.three{grid-template-columns:1fr}}
+.icard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;min-height:110px;transition:border-color .35s,background .35s}
+.icard h3{font-size:14px;display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.icard p{font-size:13.5px;color:var(--muted)}
+.icard.sel{border-color:var(--accent);background:#16211C}
+.icard.flash{animation:flash .55s ease}
+@keyframes flash{0%{background:var(--accent-dim)}100%{background:var(--surface)}}
+.builder{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:860px){.slots{grid-template-columns:1fr 1fr}}
+.slot{border:2px dashed var(--line);border-radius:12px;padding:16px 12px;min-height:110px;display:flex;flex-direction:column;gap:8px;transition:border-color .3s,background .3s}
+.slot .hint{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.slot .filled{font-size:13.5px;color:var(--ink);font-family:var(--font-mono);background:var(--surface2);border-radius:8px;padding:8px 10px;word-break:break-all}
+.slot.done{border-color:var(--accent);border-style:solid;background:var(--accent-dim)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{font-family:var(--font-mono);font-size:13.5px;background:var(--surface2);color:#BFD4E6;border:1.5px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;transition:border-color .25s,transform .2s,opacity .25s}
+.chip:hover{border-color:var(--accent);transform:translateY(-2px)}
+.chip:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.chip.shake{animation:shake .45s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.builder-done{display:none;margin-top:20px;border-top:1px dashed var(--line);padding-top:18px;font-size:14.5px;color:var(--muted)}
+.builder-done.show{display:block}
+.builder-done b{color:var(--ink)}
+.chain{display:flex;align-items:stretch;gap:0;margin-top:16px;flex-wrap:wrap}
+.chain .hop{flex:1;min-width:150px;border:2px solid var(--line);border-radius:12px;padding:14px;text-align:center;background:var(--surface2)}
+.chain .hop.fake{border-color:var(--exposed)}
+.chain .hop.real{border-color:var(--accent)}
+.chain .hop .cap{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-bottom:6px}
+.chain .hop .core{font-family:var(--font-mono);font-size:12.5px;color:#ADCBFF}
+.chain .arr{display:flex;align-items:center;padding:0 10px;color:var(--muted);font-size:20px}
+.mini-track{position:relative;height:52px;margin-top:16px;border-bottom:2px solid var(--line);overflow:hidden}
+.mini-pkt{position:absolute;left:-40px;top:12px;width:34px;height:22px;border-radius:6px;background:var(--packet);opacity:0}
+.mini-pkt.go{opacity:1;animation:run 1.6s ease-in forwards}
+@keyframes run{0%{left:-40px}100%{left:105%}}
+.note{background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 18px;margin-top:20px;font-size:14.5px;color:var(--muted)}
+.note b{color:var(--ink)}
+.note.warn{border-left-color:var(--exposed)}
+.quiz{margin-top:28px;display:flex;flex-direction:column;gap:20px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.q h3{font-size:16.5px;margin-bottom:16px;font-weight:600}
+.q label{display:flex;gap:12px;align-items:flex-start;padding:11px 14px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;cursor:pointer;font-size:15px;transition:border-color .25s,background .25s}
+.q label:hover{border-color:var(--muted)}
+.q input{accent-color:var(--accent);margin-top:4px;flex:0 0 auto}
+.q label.right{border-color:var(--accent);background:var(--accent-dim)}
+.q label.wrong{border-color:var(--exposed);background:var(--exposed-dim)}
+.q .expl{display:none;font-size:14px;color:var(--muted);margin-top:10px;padding-top:12px;border-top:1px dashed var(--line)}
+.q.answered .expl{display:block}
+.quiz-score{font-family:var(--font-mono);color:var(--accent);font-size:15px;margin-top:6px;min-height:24px}
+footer{border-top:1px solid var(--line);margin-top:80px;padding:44px 0 70px}
+.next-link{display:inline-flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius);padding:16px 26px;font-weight:600;text-decoration:none;transition:transform .3s,box-shadow .3s}
+.next-link:hover{transform:translateX(6px);box-shadow:0 0 26px rgba(53,224,161,.25)}
+.sources{margin-top:34px}
+.sources h3{font-size:15px;margin-bottom:10px;color:var(--muted);font-weight:600}
+.sources li{font-size:14px;color:var(--muted);margin-left:20px;padding:2px 0}
+.sources a{color:#ADCBFF}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}html{scroll-behavior:auto}.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<nav id="dots" aria-label="Навигация по секциям">
+  <a href="#hero" data-s="hero"></a><a href="#mitm" data-s="mitm"></a><a href="#corp" data-s="corp"></a><a href="#quiz" data-s="quiz"></a>
+</nav>
+<main>
+
+<!-- ============ HERO ============ -->
+<section id="hero">
+  <svg id="hero-bg" aria-hidden="true"></svg>
+  <div class="hero-badge">Курс «VPN: как это работает» · <b>Модуль 08</b> / 10</div>
+  <h1>MITM: посредник<br>с разрешением и без</h1>
+  <p class="lead">«Человек посередине» читает и меняет твой трафик. Разбираем три акта: наивный перехват HTTP, почему TLS ломает атаку о доверие, и легальный MITM — когда подставной сертификат установил твой же админ.</p>
+  <div class="hero-games"><span>🕵 атака в трёх режимах</span><span>🧩 конструктор корпоративного MITM</span></div>
+  <div class="scroll-hint"><span class="arrow">↓</span> Листай — посредник уже в канале</div>
+</section>
+
+<!-- ============ MITM JOURNEY ============ -->
+<section id="mitm" class="reveal">
+  <div class="kicker">Игра 1 · Атака в трёх режимах</div>
+  <h2>Один посредник — три сценария</h2>
+  <p>Посередине канала между тобой и банком стоит MITM (Man-in-the-Middle — «человек посередине»). Выбери режим и пройди путь пакета по шагам: «Авто» или стрелки «‹ Назад» / «Шаг ›». В каждом режиме у атакующего свой финал. Кликай по узлам — ниже открываются карточки.</p>
+
+  <div class="btn-row" id="modeRow" role="group" aria-label="Выбор режима">
+    <button class="btn ghost" data-mode="http">📮 HTTP</button>
+    <button class="btn ghost" data-mode="tls">🔒 HTTPS</button>
+    <button class="btn ghost" data-mode="corp">🏢 HTTPS + подставной корень</button>
+  </div>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 300" role="img" aria-label="Путь запроса через атакующего к банку">
+      <path class="wire" d="M 100 150 H 860"/>
+      <g class="node-g" data-node="you" tabindex="0" role="button" aria-label="Вы">
+        <rect class="node-box" x="30" y="106" width="140" height="88" rx="12"/>
+        <text class="node-label" x="100" y="144">Вы 🏠</text>
+        <text class="node-sub" x="100" y="164">браузер</text>
+        <text class="node-sub" x="100" y="178">логин и пароль</text>
+      </g>
+      <g class="node-g" data-node="mid" tabindex="0" role="button" aria-label="Атакующий посередине">
+        <rect class="node-box" x="410" y="106" width="140" height="88" rx="12" style="stroke:var(--exposed)"/>
+        <text class="node-label" x="480" y="144" style="fill:var(--exposed)">Посредник 🕵</text>
+        <text class="node-sub" x="480" y="164">злой Wi-Fi / инспектор</text>
+        <text class="node-sub" x="480" y="178">физически в канале</text>
+      </g>
+      <g class="node-g" data-node="bank" tabindex="0" role="button" aria-label="Банк">
+        <rect class="node-box" x="790" y="106" width="140" height="88" rx="12" style="stroke:var(--accent)"/>
+        <text class="node-label" x="860" y="144" style="fill:var(--accent)">Банк 🏦</text>
+        <text class="node-sub" x="860" y="164">bank.ru</text>
+        <text class="node-sub" x="860" y="178">есть приватный ключ</text>
+      </g>
+      <g id="mitmPkt" transform="translate(100,122)" style="opacity:0">
+        <rect id="mitmShell" x="-26" y="-17" width="52" height="34" rx="9" fill="rgba(53,224,161,.15)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 4" style="opacity:0"/>
+        <rect id="mitmBody" x="-15" y="-11" width="30" height="22" rx="6" fill="var(--packet)"/>
+        <text id="mitmLock" x="0" y="4.5" text-anchor="middle" font-size="11" fill="#04120C" style="opacity:0">🔒</text>
+        <text class="pkt-lbl" id="mitmLbl" x="0" y="-24"></text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="mitmGo">🕵 Авто</button>
+    <button class="btn ghost" id="mitmPrev" disabled>‹ Назад</button>
+    <button class="btn ghost" id="mitmNext">Шаг ›</button>
+    <span class="score" id="mitmStep"></span>
+  </div>
+  <div class="speech" id="mitmSpeech">
+    <span class="ava">🕵</span>
+    <span><span class="who">Посредник</span><span class="say">Я стою прямо в канале между тобой и банком. Выбери режим наверху — и посмотрим, что я смогу прочесть в каждом случае.</span></span>
+  </div>
+
+  <div class="info-cards three" id="mitmCards">
+    <div class="icard" data-for="you"><h3>🏠 Вы</h3><p>Отправляешь логин, пароль, номер карты. Доверяешь замочку в адресной строке — и правильно делаешь, если список доверенных сертификатов не скомпрометирован.</p></div>
+    <div class="icard" data-for="mid"><h3>🕵 Посредник</h3><p>Злой Wi-Fi, провайдер, корпоративный шлюз или гос-фильтр. Физически видит каждый байт канала. Его возможности целиком зависят от протокола и от того, какие корневые сертификаты ты ему доверил.</p></div>
+    <div class="icard" data-for="bank"><h3>🏦 Банк</h3><p>Владеет приватным ключом и настоящим сертификатом, подписанным доверенным CA (Certificate Authority — удостоверяющий центр). Без этого ключа представиться банком нельзя.</p></div>
+  </div>
+
+  <div class="note"><b>Ключевая мысль:</b> посредника из канала не убрать — пакеты физически идут через чужие узлы. Защищает не отсутствие посредника, а протокол: TLS превращает перехват в подглядывание в шифротекст. Но доверие TLS живёт в списке корневых сертификатов — и кто контролирует этот список, тот контролирует всё.</div>
+</section>
+
+<!-- ============ CORP BUILDER ============ -->
+<section id="corp" class="reveal">
+  <div class="kicker">Игра 2 · Конструктор</div>
+  <h2>Собери легальный MITM</h2>
+  <p>Корпоративная инспекция трафика — тот же «человек посередине», только по трудовому договору. Собери схему из четырёх деталей в правильном смысле. Одна деталь тут невозможна в принципе — найдёшь её?</p>
+
+  <div class="builder">
+    <div class="slots">
+      <div class="slot" data-slot="root"><span class="hint">1 · Фундамент доверия</span></div>
+      <div class="slot" data-slot="intercept"><span class="hint">2 · Перехват</span></div>
+      <div class="slot" data-slot="fake"><span class="hint">3 · Подмена личности</span></div>
+      <div class="slot" data-slot="reenc"><span class="hint">4 · Инспекция и дальше</span></div>
+    </div>
+    <div class="chips" id="corpChips">
+      <button class="chip" data-target="root">📥 свой корневой CA-сертификат — в доверенные на все устройства</button>
+      <button class="chip" data-target="intercept">✂️ весь HTTPS сотрудников — через инспекционный шлюз</button>
+      <button class="chip" data-target="fake">🎭 на лету выпустить поддельный сертификат bank.ru от своего CA</button>
+      <button class="chip" data-target="reenc">🔓 расшифровать → проверить (DLP, антивирус) → зашифровать заново</button>
+      <button class="chip" data-target="steal">🗝 украсть приватный ключ банка с его сервера</button>
+    </div>
+    <div class="speech" id="corpSpeech" style="margin-top:18px">
+      <span class="ava">🏢</span>
+      <span><span class="who">Сетевой админ</span><span class="say">Добро пожаловать в серверную. Собери мою рабочую схему инспекции трафика из четырёх деталей. Пятая — из области фантастики 😏</span></span>
+    </div>
+    <div class="builder-done" id="corpDone">
+      <b>Схема собрана! 🏢</b> Вот что получилось: вместо одного TLS-соединения — два. Пользователь видит горящий замочек и не подозревает, что посередине его трафик читают:
+      <div class="chain">
+        <div class="hop"><div class="cap">сотрудник</div><div class="core">ты 🏠</div></div>
+        <div class="arr">⇄</div>
+        <div class="hop fake"><div class="cap">TLS №1 · поддельный замок 🔓</div><div class="core">инспекционный шлюз<br>(подставной сертификат bank.ru)</div></div>
+        <div class="arr">⇄</div>
+        <div class="hop real"><div class="cap">TLS №2 · настоящий замок 🔒</div><div class="core">bank.ru</div></div>
+      </div>
+      <div class="mini-track"><div class="mini-pkt" id="corpMini"></div></div>
+      <div class="btn-row">
+        <button class="btn" id="corpSend">Отправить запрос «через шлюз» 🚀</button>
+        <button class="btn ghost" id="corpReset">Собрать заново</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="note warn"><b>Вывод от обратного:</b> тот, кто поставил корневой сертификат на твоё устройство, может молча читать ЛЮБОЙ твой HTTPS — замочек будет гореть честно. Поэтому: не устанавливать незнакомые корневые сертификаты, а онлайн-банк — не с корпоративного ноутбука.</div>
+</section>
+
+<!-- ============ QUIZ ============ -->
+<section id="quiz" class="reveal">
+  <div class="kicker">Проверка</div>
+  <h2>Мини-квиз: посредник пойман?</h2>
+  <div class="quiz" id="quizBox"></div>
+  <div class="quiz-score" id="quizScore"></div>
+</section>
+
+<footer>
+  <a class="next-link" href="./09-utechki-i-ogranicheniya.html">Дальше: утечки и мифы <span>→</span></a>
+  <div class="sources">
+    <h3>Источники</h3>
+    <ul>
+      <li>RFC 8446 — TLS 1.3: <a href="https://datatracker.ietf.org/doc/html/rfc8446">datatracker.ietf.org/doc/html/rfc8446</a></li>
+      <li>MitM attack — MDN Glossary: <a href="https://developer.mozilla.org/en-US/docs/Glossary/MitM">developer.mozilla.org</a></li>
+      <li>Certificate Transparency: <a href="https://certificate.transparency.dev/">certificate.transparency.dev</a></li>
+      <li>NIST SP 800-52r2 — TLS Guidelines: <a href="https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-52r2.pdf">nvlpubs.nist.gov</a></li>
+      <li>WireGuard Whitepaper: <a href="https://www.wireguard.com/papers/wireguard.pdf">wireguard.com/papers/wireguard.pdf</a></li>
+    </ul>
+  </div>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:30px;font-family:var(--font-mono)">documents_hub / vpn · модуль 08 · статус: draft</p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, RM ? Math.min(ms, 300) : ms));
+
+/* ===== reveal / progress / dots ===== */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+const sections = [...document.querySelectorAll('section')];
+const dots = [...document.querySelectorAll('#dots a')];
+function onScroll(){
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  let cur = sections[0].id;
+  for (const s of sections){ if (s.getBoundingClientRect().top < innerHeight * 0.4) cur = s.id; }
+  dots.forEach(d => d.classList.toggle('on', d.dataset.s === cur));
+}
+addEventListener('scroll', onScroll, { passive:true }); onScroll();
+
+/* ===== helpers ===== */
+function speak(strip, ava, who, text, bad){
+  strip.className = 'speech pop' + (bad ? ' bad' : '');
+  strip.innerHTML = '';
+  const a = document.createElement('span'); a.className = 'ava'; a.textContent = ava;
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
+  const s = document.createElement('span'); s.className = 'say'; s.textContent = text;
+  const wrap = document.createElement('span'); wrap.appendChild(w); wrap.appendChild(s);
+  strip.appendChild(a); strip.appendChild(wrap);
+}
+function movePkt(g, from, to, dur, cancelFn){
+  return new Promise(res => {
+    const t0 = performance.now();
+    if (RM){ g.setAttribute('transform', `translate(${to[0]},${to[1]})`); res(); return; }
+    function step(now){
+      if (cancelFn && cancelFn()){ res(); return; }
+      const k = Math.min((now - t0) / dur, 1);
+      const x = from[0] + (to[0] - from[0]) * k;
+      const y = from[1] + (to[1] - from[1]) * k;
+      g.setAttribute('transform', `translate(${x},${y})`);
+      if (k < 1) requestAnimationFrame(step); else res();
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+/* ===== game 1: MITM in three modes ===== */
+(function mitmGame(){
+  const pkt = document.getElementById('mitmPkt');
+  const shell = document.getElementById('mitmShell');
+  const body = document.getElementById('mitmBody');
+  const lock = document.getElementById('mitmLock');
+  const lbl = document.getElementById('mitmLbl');
+  const btn = document.getElementById('mitmGo');
+  const prevBtn = document.getElementById('mitmPrev');
+  const nextBtn = document.getElementById('mitmNext');
+  const counter = document.getElementById('mitmStep');
+  const strip = document.getElementById('mitmSpeech');
+  const START = [100,122];
+  let running = false, autoCancel = false, busy = false, idx = -1, cur = START.slice();
+  let mode = null, steps = [];
+
+  const SCRIPTS = {
+    http: [
+      { p:[100,122], l:'POST /login 📮', sh:false, lk:false, bad:false, ava:'🏠', who:'Вы · HTTP',
+        say:'Отправляю в банк логин и пароль по обычному HTTP. Всё открытым текстом — как открытка по почте.' },
+      { p:[480,122], l:'👀 читаю всё', sh:false, lk:false, bad:true, ava:'🕵', who:'Посредник',
+        say:'О, открытка! Логин: user, пароль: qwerty123. Записал. Могу и ответить за банк — подменить страницу на фишинговую, никто не проверит.' },
+      { p:[860,122], l:'запрос дошёл', sh:false, lk:false, bad:false, ava:'🏦', who:'Банк',
+        say:'Запрос получен… но настоящий ли он? По HTTP никак не проверить — ни подписи, ни целостности.' },
+      { p:[480,122], l:'✏️ правлю ответ', sh:false, lk:false, bad:true, ava:'🕵', who:'Посредник',
+        say:'На обратном пути меняю содержимое страницы: вместо баланса — моя форма «введите пароль ещё раз». HTTP не защищает ни от чтения, ни от правки.' },
+      { p:[100,122], l:'😱', sh:false, lk:false, bad:true, ava:'🎓', who:'Мораль',
+        say:'HTTP — открытка, которую читает и дописывает каждый почтальон по дороге. Поэтому весь современный веб живёт на HTTPS.' }
+    ],
+    tls: [
+      { p:[100,122], l:'TLS handshake 🔒', sh:true, lk:true, bad:false, ava:'🏠', who:'Вы · HTTPS',
+        say:'Запрос к банку по HTTPS. Начинаю TLS-рукопожатие: попрошу сертификат и проверю его по цепочке доверия.' },
+      { p:[480,122], l:'🎭 я — банк?', sh:true, lk:true, bad:true, ava:'🕵', who:'Посредник',
+        say:'Канал я перехватил, но содержимое — шифротекст. Попробую представиться банком: подсуну СВОЙ сертификат для bank.ru…' },
+      { p:[480,122], l:'🚫 цепочка не сходится', sh:true, lk:true, bad:true, ava:'🕵', who:'Посредник',
+        say:'Провал! Моей подписи нет среди доверенных CA. Браузер пользователя покажет предупреждение о недействительном сертификате. Приватного ключа банка у меня нет — представиться им невозможно.' },
+      { p:[860,122], l:'🔑 настоящий ключ', sh:true, lk:true, bad:false, ava:'🏦', who:'Банк',
+        say:'Вот мой настоящий сертификат: «публичный ключ принадлежит bank.ru», подпись доверенного CA. Приватным ключом подписываю рукопожатие — подделать нельзя.' },
+      { p:[100,122], l:'✅ цепочка валидна', sh:true, lk:true, bad:false, ava:'🏠', who:'Вы',
+        say:'Проверил цепочку: сертификат банка → промежуточный CA → корневой CA из моего доверенного списка. Всё сходится — устанавливаю сессионные ключи. Замочек горит честно 🔒' },
+      { p:[480,122], l:'😤 только шум', sh:true, lk:true, bad:true, ava:'🎓', who:'Мораль',
+        say:'Наивный MITM против HTTPS ломается не о шифрование, а о доверие: перехватить канал можно, представиться банком — нет. Посреднику остаётся считать объём трафика.' }
+    ],
+    corp: [
+      { p:[100,122], l:'📥 доверенный корень', sh:false, lk:false, bad:false, ava:'🏢', who:'Админ компании',
+        say:'На все корпоративные ноутбуки заранее установлен НАШ корневой CA-сертификат — он в списке доверенных. «Для безопасности и DLP», так положено по регламенту.' },
+      { p:[480,122], l:'✂️ перехват TLS', sh:true, lk:true, bad:false, ava:'🏢', who:'Инспекционный шлюз',
+        say:'Сотрудник открывает bank.ru. Я перехватываю TLS-соединение и на лету выпускаю сертификат для bank.ru… подписанный СВОИМ корневым CA.' },
+      { p:[100,122], l:'🔒? замочек горит', sh:true, lk:true, bad:true, ava:'🏠', who:'Браузер сотрудника',
+        say:'Проверяю цепочку: сертификат bank.ru → корпоративный CA → он в доверенных! Замочек горит, всё «безопасно». Подвох не виден: доверие-то выдали админу.' },
+      { p:[480,122], l:'👓 читаю открытым', sh:true, lk:false, bad:true, ava:'🏢', who:'Инспекционный шлюз',
+        say:'Трафик расшифрован: проверяю на вирусы и утечки (DLP). Всё легально — компания предупредила в регламенте. Шифрую заново и отправляю в настоящий банк.' },
+      { p:[860,122], l:'TLS №2 🔒', sh:true, lk:true, bad:false, ava:'🏦', who:'Банк',
+        say:'Ко мне пришло соединение от IP корпоративного шлюза с честным TLS-рукопожатием. Я вижу настоящего клиента? Нет — я вижу шлюз. Но формально всё валидно.' },
+      { p:[480,122], l:'🎭 два замка', sh:true, lk:true, bad:true, ava:'🎓', who:'Мораль',
+        say:'Это легальный MITM: вместо одного TLS-соединения — два, а посередине точка, где твой трафик голый. Кто контролирует список доверенных сертификатов — контролирует твои замки.' }
+    ]
+  };
+
+  function applyStep(i){
+    const st = steps[i];
+    speak(strip, st.ava, st.who, st.say, st.bad);
+    lbl.textContent = st.l;
+    shell.style.opacity = st.sh ? 1 : 0;
+    lock.style.opacity = st.lk ? 1 : 0;
+    shell.setAttribute('stroke', st.bad ? 'var(--exposed)' : 'var(--accent)');
+    body.setAttribute('fill', st.bad ? 'var(--exposed)' : 'var(--packet)');
+    counter.textContent = `шаг ${i+1} из ${steps.length}`;
+    prevBtn.disabled = i <= 0;
+    nextBtn.disabled = i >= steps.length - 1;
+  }
+  function resetToStart(){
+    idx = -1; cur = START.slice();
+    pkt.setAttribute('transform', `translate(${cur[0]},${cur[1]})`);
+    pkt.style.opacity = 0;
+    shell.style.opacity = 0; lock.style.opacity = 0; lbl.textContent = '';
+    shell.setAttribute('stroke', 'var(--accent)');
+    body.setAttribute('fill', 'var(--packet)');
+    counter.textContent = steps.length ? `шаг 0 из ${steps.length}` : '';
+    prevBtn.disabled = true; nextBtn.disabled = !steps.length;
+    btn.disabled = !steps.length;
+  }
+  async function goto(i){
+    busy = true;
+    pkt.style.opacity = 1;
+    await movePkt(pkt, cur, steps[i].p, 950, () => autoCancel);
+    cur = steps[i].p.slice();
+    if (autoCancel){ busy = false; return; }
+    idx = i; busy = false;
+    applyStep(i);
+  }
+  async function arrow(dir){
+    if (running) autoCancel = true;
+    while (busy || running) await sleep(60);
+    autoCancel = false;
+    const t = idx + dir;
+    if (t < 0 || t >= steps.length) return;
+    await goto(t);
+  }
+  prevBtn.addEventListener('click', () => arrow(-1));
+  nextBtn.addEventListener('click', () => arrow(1));
+
+  document.querySelectorAll('#modeRow .btn').forEach(b => {
+    b.addEventListener('click', async () => {
+      if (running) autoCancel = true;
+      while (busy || running) await sleep(60);
+      running = false; btn.disabled = false;
+      document.querySelectorAll('#modeRow .btn').forEach(x => x.classList.add('ghost'));
+      b.classList.remove('ghost');
+      mode = b.dataset.mode;
+      steps = SCRIPTS[mode];
+      resetToStart();
+      const names = { http:'📮 HTTP — без шифрования', tls:'🔒 HTTPS — защита TLS', corp:'🏢 HTTPS + подставной корень' };
+      speak(strip, '🕵', 'Посредник', `Режим: ${names[mode]}. Жми «Авто» или листай шаги стрелками — посмотрим, что я смогу прочесть.`);
+      btn.textContent = '🕵 Авто';
+    });
+  });
+
+  document.querySelectorAll('#mitm .node-g[data-node]').forEach(g => {
+    const act = () => {
+      document.querySelectorAll('#mitm .node-g').forEach(x => x.classList.remove('sel'));
+      g.classList.add('sel');
+      const card = document.querySelector(`#mitmCards .icard[data-for="${g.dataset.node}"]`);
+      if (card){
+        document.querySelectorAll('#mitmCards .icard.sel').forEach(x => x.classList.remove('sel'));
+        card.classList.add('sel');
+        card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+        card.scrollIntoView({ block:'nearest', behavior:'smooth' });
+      }
+    };
+    g.addEventListener('click', act);
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); act(); } });
+  });
+
+  btn.addEventListener('click', async () => {
+    if (running || !steps.length) return;
+    if (idx >= steps.length - 1) resetToStart();
+    running = true; autoCancel = false; btn.disabled = true;
+    while (!autoCancel && idx < steps.length - 1){
+      await goto(idx + 1);
+      if (autoCancel) break;
+      for (let w = 0; w < 2000 && !autoCancel; w += 60) await sleep(60);
+    }
+    running = false; btn.disabled = false;
+    btn.textContent = idx >= steps.length - 1 ? '🕵 Ещё разок' : '🕵 Авто';
+    prevBtn.disabled = idx <= 0; nextBtn.disabled = idx >= steps.length - 1;
+  });
+
+  /* дефолт: HTTP */
+  mode = 'http';
+  steps = SCRIPTS.http;
+  document.querySelector('#modeRow .btn[data-mode="http"]').classList.remove('ghost');
+  resetToStart();
+  speak(strip, '🕵', 'Посредник', 'По умолчанию: 📮 HTTP — самый беззащитный режим. Жми «Авто» или листай шаги стрелками — режимы переключаются кнопками наверху.');
+})();
+
+/* ===== game 2: corporate MITM builder ===== */
+(function corpBuilder(){
+  const strip = document.getElementById('corpSpeech');
+  const done = document.getElementById('corpDone');
+  const chips = [...document.querySelectorAll('#corpChips .chip')];
+  let filled = 0;
+
+  const GOOD = {
+    root:      'Фундамент: корневой CA-сертификат компании добавлен в доверенные на каждом устройстве. Без этого шага всё остальное не сработает — браузеры просто завернут поддельные сертификаты.',
+    intercept: 'Перехват: весь HTTPS сотрудников направляется через инспекционный шлюз (прозрачный прокси). Он видит каждое соединение — и может вмешаться в любое.',
+    fake:      'Подмена личности: для каждого сайта шлюз на лету генерирует сертификат с тем же доменом, подписанный СВОИМ корневым CA. Браузер проверяет цепочку — и она сходится!',
+    reenc:     'Инспекция: шлюз расшифровывает трафик, проверяет его (антивирус, DLP — защита от утечек), затем устанавливает ВТОРОЕ настоящее TLS-соединение с сайтом и шифрует заново.'
+  };
+
+  chips.forEach(c => c.addEventListener('click', () => {
+    const t = c.dataset.target;
+    if (t === 'steal'){
+      c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
+      speak(strip, '🗝', 'Украсть ключ банка?', 'Если бы! Приватный ключ банка лежит в HSM за семью печатями — его кража это событие мирового масштаба 😄 Корпоративному MITM это и не нужно: он ломает не банк, а доверие на ТВОЁМ устройстве.', true);
+      return;
+    }
+    const slot = document.querySelector(`.slot[data-slot="${t}"]`);
+    if (!slot || slot.classList.contains('done')) return;
+    slot.classList.add('done');
+    const d = document.createElement('div'); d.className = 'filled'; d.textContent = c.textContent.replace(/^[^\s]+\s/, '');
+    slot.appendChild(d);
+    c.disabled = true; filled++;
+    speak(strip, '🧩', 'Деталь на месте', GOOD[t]);
+    if (filled === 4){
+      done.classList.add('show');
+      speak(strip, '🏢', 'Сетевой админ', 'Схема готова! Смотри: одно TLS-соединение превратилось в два, а посередине — моя точка инспекции. Жми «Отправить запрос».');
+    }
+  }));
+
+  document.getElementById('corpSend').addEventListener('click', () => {
+    const p = document.getElementById('corpMini');
+    p.classList.remove('go'); void p.offsetWidth; p.classList.add('go');
+    speak(strip, '🚀', 'Запрос прошёл', 'Твой запрос прочитан шлюзом, проверен и доставлен в банк по второму TLS-соединению. Замочек горел честно — на обоих участках. Просто посередине стоял тот, кому ты доверил корень.');
+  });
+
+  document.getElementById('corpReset').addEventListener('click', () => {
+    filled = 0;
+    document.querySelectorAll('#corp .slot').forEach(s => { s.classList.remove('done'); s.querySelector('.filled')?.remove(); });
+    chips.forEach(c => c.disabled = false);
+    done.classList.remove('show');
+    document.getElementById('corpMini').classList.remove('go');
+    speak(strip, '🏢', 'Сетевой админ', 'Добро пожаловать в серверную. Собери мою рабочую схему инспекции трафика из четырёх деталей. Пятая — из области фантастики 😏');
+  });
+})();
+
+/* ===== quiz ===== */
+(function quiz(){
+  const QUIZ = [
+    { q: 'Почему наивный MITM не работает против HTTPS?',
+      a: ['TLS шифрует данные слишком быстро', 'Атакующий не может предъявить сертификат сайта с подписью доверенного CA — у него нет нужных приватных ключей', 'Браузер физически блокирует посредников в канале'], right: 1,
+      ex: 'Перехватить канал можно — представиться сайтом нельзя: цепочка доверия (сертификат → промежуточный CA → корневой CA) не сойдётся, и браузер покажет предупреждение.' },
+    { q: 'На чём держится корпоративный MITM (инспекция HTTPS)?',
+      a: ['На взломе серверов сайтов', 'На расшифровке трафика спецслужбами', 'На собственном корневом сертификате, заранее установленном в доверенные на устройствах сотрудников'], right: 2,
+      ex: 'Свой CA в списке доверенных позволяет шлюзу выпускать поддельные сертификаты для любых сайтов — браузер их честно принимает. Доверие выдали администратору.' },
+    { q: 'Что видит сотрудник, чей HTTPS инспектирует корпоративный шлюз?',
+      a: ['Предупреждение браузера на каждом сайте', 'Обычный горящий замочек — подмену не видно', 'Замедление интернета, но замочек перечёркнут'], right: 1,
+      ex: 'Цепочка «поддельный сертификат → корпоративный CA → доверенный список» валидна, поэтому замочек горит как ни в чём не бывало. Отсюда правило: банк — не с корпоративного ноутбука.' },
+    { q: 'Почему провайдер не может подменить содержимое твоего VPN-туннеля?',
+      a: ['VPN запрещает провайдеру это юридически', 'Пакеты туннеля защищены AEAD-кодом подлинности — любая мутация будет замечена, а ключей у провайдера нет', 'Провайдер не видит пакеты туннеля физически'], right: 1,
+      ex: 'Каждый пакет туннеля несёт код аутентификации (модуль 05): изменение хотя бы одного байта превращает пакет в мусор, который клиент отбросит. Ключи известны только клиенту и VPN-серверу.' },
+    { q: 'Ты включил VPN в злом Wi-Fi кафе. Кто теперь видит твой трафик открытым?',
+      a: ['Никто — VPN решает все проблемы', 'Владелец кафе — он держит твой туннель', 'VPN-провайдер на точке выхода — он стал новым посредником, которому ты доверяешь'], right: 2,
+      ex: 'VPN убирает MITM-возможности у местных посредников (кафе, провайдер видят только шум), но точка выхода расшифровывает всё. Доверие не исчезает — оно переезжает к VPN-серверу.' }
+  ];
+  const qBox = document.getElementById('quizBox');
+  let answered = 0, correct = 0;
+  QUIZ.forEach((item, qi) => {
+    const d = document.createElement('div'); d.className = 'q reveal';
+    const h = document.createElement('h3'); h.textContent = `Вопрос ${qi+1}. ${item.q}`;
+    d.appendChild(h);
+    item.a.forEach((txt, ai) => {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="radio" name="q${qi}" value="${ai}"><span>${txt}</span>`;
+      l.querySelector('input').addEventListener('change', () => {
+        if (d.classList.contains('answered')) return;
+        d.classList.add('answered');
+        const labels = [...d.querySelectorAll('label')];
+        labels[item.right].classList.add('right');
+        if (ai !== item.right) labels[ai].classList.add('wrong'); else correct++;
+        answered++;
+        const ex = document.createElement('div'); ex.className = 'expl'; ex.textContent = item.ex; d.appendChild(ex);
+        labels.forEach(x => x.querySelector('input').disabled = true);
+        document.getElementById('quizScore').textContent = answered === QUIZ.length ? `Результат: ${correct} / ${QUIZ.length}` : '';
+      });
+      d.appendChild(l);
+    });
+    qBox.appendChild(d);
+    io.observe(d);
+  });
+})();
+
+/* ===== hero background ===== */
+(function heroBg(){
+  if (RM) return;
+  const svg = document.getElementById('hero-bg');
+  svg.setAttribute('viewBox','0 0 1060 600'); svg.setAttribute('preserveAspectRatio','xMidYMid slice');
+  for (let i = 0; i < 14; i++){
+    const y = 30 + Math.random() * 540, dur = 9 + Math.random() * 14, delay = -Math.random() * dur;
+    const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x','-30'); r.setAttribute('y', y); r.setAttribute('width', 16 + Math.random()*22);
+    r.setAttribute('height','5'); r.setAttribute('rx','2.5');
+    r.setAttribute('fill', Math.random() < .3 ? 'var(--accent)' : 'var(--line)');
+    r.style.opacity = .25 + Math.random()*.4;
+    const a = document.createElementNS('http://www.w3.org/2000/svg','animate');
+    a.setAttribute('attributeName','x'); a.setAttribute('from','-40'); a.setAttribute('to','1100');
+    a.setAttribute('dur', dur + 's'); a.setAttribute('begin', delay + 's'); a.setAttribute('repeatCount','indefinite');
+    r.appendChild(a); svg.appendChild(r);
+  }
+})();
+</script>
+</body>
+</html>

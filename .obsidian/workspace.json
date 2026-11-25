@@ -1,0 +1,221 @@
+{
+  "main": {
+    "id": "b5a83822b3d3f8bf",
+    "type": "split",
+    "children": [
+      {
+        "id": "21f3c0e5e2e5b52b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "cf0d729109a39221",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "vpn/03-tunnel-i-perehvat-trafika.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "03-tunnel-i-perehvat-trafika"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "6a4034d6d49f79a9",
+    "type": "split",
+    "children": [
+      {
+        "id": "804922b46a173509",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "102eb66f2b9dbebc",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Файловый менеджер"
+            }
+          },
+          {
+            "id": "6d956f6c973c11d3",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Поиск"
+            }
+          },
+          {
+            "id": "b3c9f9604601246a",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Закладки"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "42a2b61d3b25e873",
+    "type": "split",
+    "children": [
+      {
+        "id": "d0eafa5be7a37b56",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c9ee18fc24cdece6",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "vpn/03-tunnel-i-perehvat-trafika.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Обратные ссылки"
+            }
+          },
+          {
+            "id": "c5b06c29b099389c",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "vpn/03-tunnel-i-perehvat-trafika.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Исходящие ссылки"
+            }
+          },
+          {
+            "id": "0e7768bab495d2ac",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Теги"
+            }
+          },
+          {
+            "id": "8dee2f93525fa1de",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Все свойства"
+            }
+          },
+          {
+            "id": "3b338b14723086bd",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "vpn/03-tunnel-i-perehvat-trafika.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Структура"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Меню быстрого перехода": false,
+      "graph:Граф": false,
+      "canvas:Создать новый холст": false,
+      "daily-notes:Сегодняшняя заметка": false,
+      "templates:Вставить шаблон": false,
+      "command-palette:Открыть палитру команд": false,
+      "bases:Создать новую базу": false
+    }
+  },
+  "active": "cf0d729109a39221",
+  "lastOpenFiles": [
+    "vpn/08-mitm-i-tls.html",
+    "vpn/08-mitm-i-tls.md",
+    "vpn/07-arhitektury-vpn.html",
+    "vpn/07-arhitektury-vpn.md",
+    "vpn/06-protokoly-vpn.html",
+    "vpn/06-protokoly-vpn.md",
+    "vpn/templates/module-smoke-test.py",
+    "vpn/05-shifrovanie-i-kluchi.html",
+    "vpn/05-shifrovanie-i-kluchi.md",
+    "vpn/04-pochemu-menyaetsya-ip.html",
+    "vpn/04-pochemu-menyaetsya-ip.md",
+    "vpn/templates/regression-test.py",
+    "vpn/README.md",
+    "vpn/templates/base-module.html",
+    "vpn/03-tunnel-i-perehvat-trafika.html",
+    "vpn/03-tunnel-i-perehvat-trafika.md",
+    "vpn/02-kak-rabotaet-internet-bez-vpn.md",
+    "vpn/02-kak-rabotaet-internet-bez-vpn.html",
+    "vpn/01-chto-takoe-vpn.md",
+    "AGENTS.md",
+    "90-assets/img_test_20261118_214536.png",
+    "90-assets/IMG_1969.JPG",
+    "90-assets/IMG_1733.JPG",
+    "90-assets/IMG_2089.JPG",
+    "90-assets/IMG_6683.HEIC",
+    "01-chto-takoe-vpn.md",
+    "frontend/FE_APP_SETTINGS.md"
+  ]
+}

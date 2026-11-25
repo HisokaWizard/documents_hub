@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Модуль 03 · Туннель и перехват трафика</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0E13;
+  --surface:#111823;
+  --surface2:#18212E;
+  --line:#232F3F;
+  --ink:#E8EEF4;
+  --muted:#8A97A4;
+  --accent:#35E0A1;      /* mint — VPN / tunnel */
+  --accent-dim:rgba(53,224,161,.14);
+  --exposed:#FF7A6B;     /* coral — danger */
+  --exposed-dim:rgba(255,122,107,.13);
+  --packet:#58A6FF;      /* blue — your packet */
+  --radius:14px;
+  --font-head:'Unbounded',system-ui,sans-serif;
+  --font-body:'Golos Text',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:#04120C}
+
+/* progress + nav */
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:100;transition:width .15s linear}
+#dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;z-index:90}
+#dots a{width:9px;height:9px;border-radius:50%;background:var(--line);display:block;transition:all .3s}
+#dots a.on{background:var(--accent);transform:scale(1.45)}
+@media(max-width:900px){#dots{display:none}}
+
+/* layout */
+main{max-width:1060px;margin:0 auto;padding:0 28px}
+section{padding:96px 0 40px;min-height:60vh}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:none}
+.kicker{font-family:var(--font-mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1{font-family:var(--font-head);font-weight:800;font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.01em}
+h2{font-family:var(--font-head);font-weight:600;font-size:clamp(22px,3.2vw,32px);line-height:1.25;margin-bottom:18px}
+h3{font-size:17px;font-weight:700}
+p.lead{color:var(--muted);font-size:19px;max-width:680px;margin-top:18px}
+p+p{margin-top:14px}
+.term{color:var(--accent);font-weight:600}
+code,.mono{font-family:var(--font-mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:#BFD4E6}
+
+/* hero */
+#hero{min-height:92vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+#hero-bg{position:absolute;inset:0;pointer-events:none;opacity:.5}
+.hero-badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;margin-bottom:26px;width:max-content}
+.hero-badge b{color:var(--accent);font-weight:600}
+.scroll-hint{margin-top:56px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:10px}
+.scroll-hint .arrow{display:inline-block;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+.hero-games{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.hero-games span{font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--surface)}
+
+/* scenes */
+.scene-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:26px;position:relative}
+.scene-svg{width:100%;height:auto;display:block}
+.node-g{cursor:pointer}
+.node-g .node-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .3s,fill .3s,opacity .5s}
+.node-g:hover .node-box,.node-g.sel .node-box{stroke:var(--accent)}
+.node-g.sel .node-box{fill:#16211C}
+.node-label{font-family:var(--font-body);font-size:14px;font-weight:600;fill:var(--ink);text-anchor:middle}
+.node-sub{font-family:var(--font-mono);font-size:10px;fill:var(--muted);text-anchor:middle}
+.wire{stroke:var(--line);stroke-width:2;fill:none}
+.wire-hot{stroke:var(--accent);stroke-width:2;fill:none;stroke-dasharray:7 7;opacity:0;transition:opacity .6s}
+.wire-hot.on{opacity:1;animation:dash 1.2s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-28}}
+.row2{opacity:.28;transition:opacity .6s}
+.row2.on{opacity:1}
+
+/* focus: без уродливого кольца на клик, стильное — с клавиатуры */
+.cable-g:focus,.node-g:focus{outline:none}
+.cable-g:focus-visible .out-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+.node-g:focus-visible .node-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:9px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:11px;padding:11px 20px;font-family:var(--font-body);font-size:15px;font-weight:600;cursor:pointer;transition:transform .25s,box-shadow .25s,opacity .25s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 0 20px rgba(53,224,161,.22)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.btn.ghost{background:none;border-color:var(--line);color:var(--muted)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
+
+/* speech */
+.speech{display:flex;gap:13px;align-items:flex-start;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:13px 17px;margin-top:16px;font-size:15px;min-height:56px;line-height:1.5}
+.speech .ava{font-size:22px;line-height:1.2;flex:0 0 auto}
+.speech .who{font-family:var(--font-mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:2px}
+.speech .say{color:var(--ink)}
+.speech.pop{animation:pop .35s ease}
+@keyframes pop{0%{transform:scale(.97);opacity:.4}100%{transform:scale(1);opacity:1}}
+.speech.bad .who{color:var(--exposed)}
+
+/* info cards */
+.info-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px}
+@media(max-width:980px){.info-cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.info-cards{grid-template-columns:1fr}}
+.icard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;min-height:110px;transition:border-color .35s,background .35s}
+.icard h3{font-size:14px;display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.icard p{font-size:13.5px;color:var(--muted)}
+.icard.sel{border-color:var(--accent);background:#16211C}
+.icard.flash{animation:flash .55s ease}
+@keyframes flash{0%{background:var(--accent-dim)}100%{background:var(--surface)}}
+
+/* toggle */
+.toggle-row{display:flex;align-items:center;gap:16px;margin-top:18px;flex-wrap:wrap}
+.switch{position:relative;width:64px;height:34px;flex:0 0 auto}
+.switch input{opacity:0;width:100%;height:100%;position:absolute;cursor:pointer;z-index:2;margin:0}
+.slider{position:absolute;inset:0;background:var(--surface2);border:1px solid var(--line);border-radius:999px;transition:.35s}
+.slider::before{content:'';position:absolute;width:24px;height:24px;left:4px;top:4px;border-radius:50%;background:var(--muted);transition:.35s}
+.switch input:checked+.slider{background:var(--accent-dim);border-color:var(--accent)}
+.switch input:checked+.slider::before{transform:translateX(30px);background:var(--accent)}
+.switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:3px}
+.toggle-label{font-family:var(--font-mono);font-size:14px;color:var(--muted);transition:color .3s}
+.toggle-label.on{color:var(--accent)}
+
+/* routing tables */
+.rt{background:var(--surface2);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:16px}
+.rt-title{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 18px;border-bottom:1px solid var(--line);background:var(--surface)}
+.rt-row{display:grid;grid-template-columns:minmax(140px,.8fr) 2fr;gap:12px;padding:10px 18px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border-bottom:1px solid var(--line)}
+.rt-row:last-child{border-bottom:none}
+.rt-row .dst{color:var(--ink)}
+.rt-row.hl{color:var(--accent)}
+.rt-row.hl .dst{color:var(--accent)}
+.rt-row.new{animation:pop .45s ease}
+.rt-row.gone{opacity:.35;text-decoration:line-through}
+
+/* builder / matryoshka */
+.builder{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:860px){.slots{grid-template-columns:1fr 1fr}}
+.slot{border:2px dashed var(--line);border-radius:12px;padding:16px 12px;min-height:110px;display:flex;flex-direction:column;gap:8px;transition:border-color .3s,background .3s}
+.slot .hint{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.slot .filled{font-size:13.5px;color:var(--ink);font-family:var(--font-mono);background:var(--surface2);border-radius:8px;padding:8px 10px;word-break:break-all}
+.slot.done{border-color:var(--accent);border-style:solid;background:var(--accent-dim)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{font-family:var(--font-mono);font-size:13.5px;background:var(--surface2);color:#BFD4E6;border:1.5px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;transition:border-color .25s,transform .2s,opacity .25s}
+.chip:hover{border-color:var(--accent);transform:translateY(-2px)}
+.chip:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.chip.shake{animation:shake .45s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.builder-done{display:none;margin-top:20px;border-top:1px dashed var(--line);padding-top:18px;font-size:14.5px;color:var(--muted)}
+.builder-done.show{display:block}
+.builder-done b{color:var(--ink)}
+.mini-track{position:relative;height:52px;margin-top:16px;border-bottom:2px solid var(--line);overflow:hidden}
+.mini-pkt{position:absolute;left:-40px;top:12px;width:34px;height:22px;border-radius:6px;background:var(--packet);opacity:0}
+.mini-pkt.go{opacity:1;animation:run 1.6s ease-in forwards}
+@keyframes run{0%{left:-40px}100%{left:105%}}
+/* matryoshka preview */
+.doll{display:flex;justify-content:center;margin-top:18px}
+.doll .l{border-radius:14px;padding:16px;border:2px solid}
+.doll .l1{border-color:var(--accent);background:var(--accent-dim)}
+.doll .l2{border-color:var(--packet);background:rgba(88,166,255,.08)}
+.doll .l3{border-color:#C9A227;background:rgba(201,162,39,.08)}
+.doll .l4{border-color:var(--line);background:var(--surface2)}
+.doll .cap{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-bottom:8px;text-align:center}
+.doll .core{font-family:var(--font-mono);font-size:13px;color:#ADCBFF;text-align:center;padding:6px 10px}
+
+/* dispatcher game */
+.route-table{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-top:16px;font-family:var(--font-mono);font-size:13.5px;color:var(--muted);display:flex;gap:26px;flex-wrap:wrap}
+.route-table b{color:var(--accent)}
+.cable-g{cursor:pointer}
+.cable-hit{stroke:transparent;stroke-width:30;fill:none}
+.cable{stroke:var(--line);stroke-width:2.5;fill:none;transition:stroke .25s}
+.cable-g:hover .cable,.cable-g.ok .cable{stroke:var(--accent)}
+.cable-g.err .cable{stroke:var(--exposed)}
+.cable-g.err{animation:shake .45s ease}
+.out-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .25s}
+.cable-g:hover .out-box{stroke:var(--accent)}
+.score{font-family:var(--font-mono);font-size:14px;color:var(--accent)}
+.pkt-lbl{font-family:var(--font-mono);font-size:9.5px;fill:#ADCBFF;text-anchor:middle}
+
+/* note */
+.note{background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 18px;margin-top:20px;font-size:14.5px;color:var(--muted)}
+.note b{color:var(--ink)}
+.note.warn{border-left-color:var(--exposed)}
+
+/* quiz */
+.quiz{margin-top:28px;display:flex;flex-direction:column;gap:20px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.q h3{font-size:16.5px;margin-bottom:16px;font-weight:600}
+.q label{display:flex;gap:12px;align-items:flex-start;padding:11px 14px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;cursor:pointer;font-size:15px;transition:border-color .25s,background .25s}
+.q label:hover{border-color:var(--muted)}
+.q input{accent-color:var(--accent);margin-top:4px;flex:0 0 auto}
+.q label.right{border-color:var(--accent);background:var(--accent-dim)}
+.q label.wrong{border-color:var(--exposed);background:var(--exposed-dim)}
+.q .expl{display:none;font-size:14px;color:var(--muted);margin-top:10px;padding-top:12px;border-top:1px dashed var(--line)}
+.q.answered .expl{display:block}
+.quiz-score{font-family:var(--font-mono);color:var(--accent);font-size:15px;margin-top:6px;min-height:24px}
+
+/* footer */
+footer{border-top:1px solid var(--line);margin-top:80px;padding:44px 0 70px}
+.next-link{display:inline-flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius);padding:16px 26px;font-weight:600;text-decoration:none;transition:transform .3s,box-shadow .3s}
+.next-link:hover{transform:translateX(6px);box-shadow:0 0 26px rgba(53,224,161,.25)}
+.sources{margin-top:34px}
+.sources h3{font-size:15px;margin-bottom:10px;color:var(--muted);font-weight:600}
+.sources li{font-size:14px;color:var(--muted);margin-left:20px;padding:2px 0}
+.sources a{color:#ADCBFF}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
+  html{scroll-behavior:auto}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<nav id="dots" aria-label="Навигация по секциям">
+  <a href="#hero" data-s="hero"></a>
+  <a href="#hijack" data-s="hijack"></a>
+  <a href="#matryoshka" data-s="matryoshka"></a>
+  <a href="#dispatcher" data-s="dispatcher"></a>
+  <a href="#quiz" data-s="quiz"></a>
+</nav>
+
+<main>
+
+<!-- ============ HERO ============ -->
+<section id="hero">
+  <svg id="hero-bg" aria-hidden="true"></svg>
+  <div class="hero-badge">Курс «VPN: как это работает» · <b>Модуль 03</b> / 10</div>
+  <h1>Туннель и перехват:<br>как VPN забирает твои пакеты</h1>
+  <p class="lead">Спойлер: никто ничего не взламывает и в провода не вклинивается. VPN просто строит внутри твоего компьютера вторую дверь и переписывает шпаргалку диспетчера — а дальше ОС сама несёт ему весь трафик. Три игры ниже — и ты увидишь это своими глазами.</p>
+  <div class="hero-games">
+    <span>🚦 путь перехвата</span><span>🪆 матрёшка-инкапсуляция</span><span>🕹 диспетчер ОС</span>
+  </div>
+  <div class="scroll-hint"><span class="arrow">↓</span> Листай — первая дверь уже ждёт</div>
+</section>
+
+<!-- ============ HIJACK PATH ============ -->
+<section id="hijack" class="reveal">
+  <div class="kicker">Игра 1 · Путь перехвата</div>
+  <h2>Один переключатель — и маршрут переписан</h2>
+  <p>Вот твой компьютер изнутри. Верхний ряд — обычный путь пакета (как в <a href="./02-kak-rabotaet-internet-bez-vpn.html" style="color:var(--accent)">модуле 02</a>). Нижний — появляется, когда VPN (Virtual Private Network — виртуальная частная сеть) включён: волшебная дверь <span class="term">TUN</span> (network TUNnel — «сетевой туннель»), VPN-клиент и VPN-сервер. Щёлкни переключатель, нажми «Отправить пакет» — и послушай, что говорит каждый узел. По узлам можно кликать — ниже открываются карточки.</p>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 370" role="img" aria-label="Путь пакета внутри компьютера с VPN и без">
+      <!-- row1 wires -->
+      <path class="wire" d="M 185 94 H 240"/>
+      <path class="wire" d="M 380 94 H 460"/>
+      <path class="wire" d="M 600 94 H 650"/>
+      <path class="wire" d="M 790 94 H 820"/>
+      <!-- row2 + mixed wires (VPN on) -->
+      <path class="wire-hot" d="M 310 138 V 240"/>
+      <path class="wire-hot" d="M 380 284 H 460"/>
+      <path class="wire-hot" d="M 530 240 V 138"/>
+      <path class="wire-hot" d="M 720 138 V 240"/>
+      <path class="wire-hot" d="M 790 284 C 860 284 890 200 890 138"/>
+      <!-- row1 nodes -->
+      <g class="node-g" data-node="app" tabindex="0" role="button" aria-label="Приложение">
+        <rect class="node-box" x="45" y="50" width="140" height="88" rx="12"/>
+        <text class="node-label" x="115" y="88">Приложение 📱</text>
+        <text class="node-sub" x="115" y="108">браузер, игра…</text>
+        <text class="node-sub" x="115" y="122">создаёт пакеты</text>
+      </g>
+      <g class="node-g" data-node="os" tabindex="0" role="button" aria-label="ОС, диспетчер">
+        <rect class="node-box" x="240" y="50" width="140" height="88" rx="12"/>
+        <text class="node-label" x="310" y="88">ОС 🚦</text>
+        <text class="node-sub" x="310" y="108">диспетчер</text>
+        <text class="node-sub" x="310" y="122">таблица маршрутов</text>
+      </g>
+      <g class="node-g" data-node="nic" tabindex="0" role="button" aria-label="Сетевая карта">
+        <rect class="node-box" x="460" y="50" width="140" height="88" rx="12"/>
+        <text class="node-label" x="530" y="88">Сетевая карта 📡</text>
+        <text class="node-sub" x="530" y="108">реальная дверь</text>
+        <text class="node-sub" x="530" y="122">кабель / Wi-Fi</text>
+      </g>
+      <g class="node-g" data-node="isp" tabindex="0" role="button" aria-label="Провайдер">
+        <rect class="node-box" x="650" y="50" width="140" height="88" rx="12"/>
+        <text class="node-label" x="720" y="88">Провайдер 🏤</text>
+        <text class="node-sub" x="720" y="108">ISP</text>
+        <text class="node-sub" x="720" y="122">главный почтамт</text>
+      </g>
+      <g class="node-g" data-node="site" tabindex="0" role="button" aria-label="Сайт">
+        <rect class="node-box" x="820" y="50" width="130" height="88" rx="12"/>
+        <text class="node-label" x="885" y="88">Сайт 🏢</text>
+        <text class="node-sub" x="885" y="108">example.com</text>
+        <text class="node-sub" x="885" y="122">93.184.216.34</text>
+      </g>
+      <!-- row2 nodes -->
+      <g class="node-g row2" data-node="tun" tabindex="0" role="button" aria-label="TUN, волшебная дверь">
+        <rect class="node-box" x="240" y="240" width="140" height="88" rx="12" style="stroke:var(--accent)"/>
+        <text class="node-label" x="310" y="278" style="fill:var(--accent)">TUN 🚪</text>
+        <text class="node-sub" x="310" y="298">волшебная дверь</text>
+        <text class="node-sub" x="310" y="312">виртуальная tun0</text>
+      </g>
+      <g class="node-g row2" data-node="cli" tabindex="0" role="button" aria-label="VPN-клиент">
+        <rect class="node-box" x="460" y="240" width="140" height="88" rx="12" style="stroke:var(--accent)"/>
+        <text class="node-label" x="530" y="278" style="fill:var(--accent)">VPN-клиент 🤖</text>
+        <text class="node-sub" x="530" y="298">WireGuard, OpenVPN</text>
+        <text class="node-sub" x="530" y="312">шифрует + упаковывает</text>
+      </g>
+      <g class="node-g row2" data-node="srv" tabindex="0" role="button" aria-label="VPN-сервер">
+        <rect class="node-box" x="650" y="240" width="140" height="88" rx="12" style="stroke:var(--accent)"/>
+        <text class="node-label" x="720" y="278" style="fill:var(--accent)">VPN-сервер 🛡</text>
+        <text class="node-sub" x="720" y="298">конец туннеля</text>
+        <text class="node-sub" x="720" y="312">203.0.113.7:51820</text>
+      </g>
+      <!-- packet -->
+      <g id="hijackPkt" transform="translate(115,66)">
+        <rect id="hijackShell" x="-26" y="-17" width="52" height="34" rx="9" fill="rgba(53,224,161,.15)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 4" style="opacity:0"/>
+        <rect x="-15" y="-11" width="30" height="22" rx="6" fill="var(--packet)"/>
+        <text id="hijackLock" x="0" y="4.5" text-anchor="middle" font-size="11" fill="#04120C" style="opacity:0">🔒</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="toggle-row">
+    <span class="switch">
+      <input type="checkbox" id="vpnToggle" aria-label="Включить VPN">
+      <span class="slider"></span>
+    </span>
+    <span class="toggle-label" id="toggleLabel">VPN выключен — пакеты ходят как обычно</span>
+  </div>
+
+  <div class="rt" id="rtHijack">
+    <div class="rt-title">📋 Шпаргалка диспетчера (таблица маршрутизации ОС)</div>
+    <div id="rtHijackRows"></div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="hijackGo">📦 Авто</button>
+    <button class="btn ghost" id="hijackPrev" disabled>‹ Назад</button>
+    <button class="btn ghost" id="hijackNext">Шаг ›</button>
+    <span class="score" id="hijackStep"></span>
+  </div>
+  <div class="speech" id="hijackSpeech">
+    <span class="ava">🚦</span>
+    <span><span class="who">ОС-диспетчер</span><span class="say">Жду пакет! Могу отправить его по старинке или через волшебную дверь — зависит от переключателя и моей шпаргалки с маршрутами.</span></span>
+  </div>
+
+  <div class="info-cards" id="hijackCards">
+    <div class="icard" data-for="app"><h3>📱 Приложение</h3><p>Браузер, игра, мессенджер. Создаёт пакеты и отдаёт ОС. Про VPN не знает ничего — и не должно.</p></div>
+    <div class="icard" data-for="os"><h3>🚦 ОС — диспетчер</h3><p>Перед отправкой сверяется с таблицей маршрутизации: «какой адрес — в какую дверь». VPN её не обманывает, а честно переписывает шпаргалку.</p></div>
+    <div class="icard" data-for="nic"><h3>📡 Сетевая карта</h3><p>Реальная дверь в физическую сеть (кабель или Wi-Fi — Wireless Fidelity, беспроводная сеть). С VPN пакеты всё равно уходят через неё — но внутри внешней обёртки.</p></div>
+    <div class="icard" data-for="isp"><h3>🏤 Провайдер</h3><p>ISP (Internet Service Provider — поставщик интернет-услуг). С VPN видит только внешний конверт: «шифрованные данные для VPN-сервера». Ни сайтов, ни содержимого.</p></div>
+    <div class="icard" data-for="tun"><h3>🚪 TUN (tun0)</h3><p>Виртуальная сетевая карта — «волшебная дверь». Железа нет: это очередь в памяти ОС между ядром и VPN-клиентом. TAP — дверь пошире, для целых кадров локальной сети LAN (Local Area Network).</p></div>
+    <div class="icard" data-for="cli"><h3>🤖 VPN-клиент</h3><p>Программа за волшебной дверью (WireGuard, OpenVPN, приложение провайдера). Ловит пакеты, шифрует и заворачивает в новый конверт до сервера — инкапсуляция.</p></div>
+    <div class="icard" data-for="srv"><h3>🛡 VPN-сервер</h3><p>Конец туннеля. Снимает обёртку (декапсуляция), расшифровывает и отправляет твои пакеты в интернет под своим IP — поэтому сайт видит его, а не тебя.</p></div>
+    <div class="icard" data-for="site"><h3>🏢 Сайт</h3><p>Конечный получатель. Видит запрос «от VPN-сервера». Ответ идёт обратно и выныривает из туннеля у тебя дома.</p></div>
+  </div>
+
+  <div class="note"><b>Ключевая мысль:</b> перехват происходит не «в сети», а внутри твоего компьютера. Твоя же ОС добровольно несёт каждый пакет в дверь <code>tun0</code>, потому что VPN-клиент добавил туда строчку маршрута по умолчанию <code>0.0.0.0/0</code>.</div>
+</section>
+
+<!-- ============ MATRYOSHKA ============ -->
+<section id="matryoshka" class="reveal">
+  <div class="kicker">Игра 2 · Матрёшка</div>
+  <h2>Инкапсуляция: пакет внутри пакета</h2>
+  <p>VPN-клиент поймал твой пакет в волшебной двери. Теперь он соберёт из него <span class="term">матрёшку</span> — это и есть инкапсуляция (encapsulation). Собери слои в правильной последовательности: клик по детали отправляет её в нужный слот.</p>
+
+  <div class="builder">
+    <div class="slots">
+      <div class="slot" data-slot="inner"><span class="hint">1 · Сердце: твой пакет</span></div>
+      <div class="slot" data-slot="crypt"><span class="hint">2 · Шифрование</span></div>
+      <div class="slot" data-slot="udp"><span class="hint">3 · Новый конверт UDP</span></div>
+      <div class="slot" data-slot="outer"><span class="hint">4 · Внешние адреса</span></div>
+    </div>
+    <div class="chips" id="chips">
+      <button class="chip" data-target="inner">📦 твой пакет GET /</button>
+      <button class="chip" data-target="crypt">🔐 шифр (превратить в шум)</button>
+      <button class="chip" data-target="udp">✉️ UDP-конверт · порт 51820</button>
+      <button class="chip" data-target="outer">🏷 адреса: 1.2.3.4 → 203.0.113.7</button>
+      <button class="chip" data-target="onion">🧅 луковица</button>
+    </div>
+    <div class="speech" id="builderSpeech" style="margin-top:18px">
+      <span class="ava">🪆</span>
+      <span><span class="who">VPN-клиент</span><span class="say">Собери матрёшку из четырёх слоёв. Пятая деталь тут явно лишняя… или я что-то путаю?</span></span>
+    </div>
+    <div class="builder-done" id="builderDone">
+      <b>Матрёшка собрана! 🪆</b> Вот что уходит в интернет — провайдер видит ТОЛЬКО внешний зелёный слой:
+      <div class="doll">
+        <div class="l l1"><div class="cap">внешний пакет · от тебя → VPN-серверу</div>
+          <div class="l l2"><div class="cap">UDP · порт 51820</div>
+            <div class="l l3"><div class="cap">шифротекст 🔒 (нечитаемый шум)</div>
+              <div class="l l4"><div class="core">твой пакет: GET / → 93.184.216.34</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mini-track"><div class="mini-pkt" id="miniPkt"></div></div>
+      <div class="btn-row">
+        <button class="btn" id="builderSend">Отправить матрёшку 🚀</button>
+        <button class="btn ghost" id="builderReset">Собрать заново</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">VPN-сервер сделает обратное — <b>декапсуляцию (decapsulation)</b>: снимет внешний конверт, расшифрует шум и достанет твой исходный пакет целым. А потом отправит его в интернет уже от <b>своего</b> имени — почему при этом «меняется IP», разберём в модуле 04.</div>
+</section>
+
+<!-- ============ DISPATCHER GAME ============ -->
+<section id="dispatcher" class="reveal">
+  <div class="kicker">Игра 3 · Диспетчер ОС</div>
+  <h2>Куда несёт диспетчер этот пакет?</h2>
+  <p>Ты — диспетчер операционной системы (ОС): именно ты решаешь, в какую дверь понести каждый пакет. Инструмент один — <b>шпаргалка-таблица прямо над сценой</b>. По ходу смены случатся два события — они ставят игру на паузу и ждут твоего «Продолжить».</p>
+
+  <div class="note">
+    <b>Как диспетчер решает, куда нести пакет</b> — три шага, всегда в этом порядке:
+    <ol style="margin:10px 0 0 22px;display:flex;flex-direction:column;gap:8px">
+      <li><b>Прочитать адрес получателя</b> на пакете (например, <code>93.184.216.34</code>).</li>
+      <li><b>Найти в шпаргалке подходящую строку.</b> Строки бывают разной «точности»: <code>203.0.113.7/32</code> — ровно один адрес (самая точная), <code>192.168.1.0/24</code> — целый район адресов, <code>0.0.0.0/0</code> — «вообще всё остальное» (самая общая). Работает правило: <b>побеждает самая точная строка</b> — сначала ищем точное совпадение, потом подсеть, и только потом «всё остальное».</li>
+      <li><b>Понести пакет в дверь из этой строки.</b> Диспетчер ничего не придумывает сам — он просто сверяется с таблицей. VPN-клиент этим и пользуется: добавляет свою строку — и ОС сама несёт ему весь трафик.</li>
+    </ol>
+  </div>
+
+  <div class="rt" id="rtGame">
+    <div class="rt-title">📋 Шпаргалка — сверяйся с ней на каждом пакете</div>
+    <div id="rtGameRows"></div>
+  </div>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 320" role="img" aria-label="Игра: выбери дверь для пакета">
+      <path class="wire" d="M 60 160 H 360"/>
+      <text class="pkt-lbl" id="routeDest" x="44" y="132" style="font-size:13px;text-anchor:start">Кому: …</text>
+      <rect x="44" y="146" width="30" height="22" rx="6" fill="var(--packet)" opacity=".25"/>
+      <rect x="360" y="110" width="170" height="100" rx="14" fill="var(--surface2)" stroke="var(--accent)" stroke-width="2"/>
+      <text class="node-label" x="445" y="150">ДИСПЕТЧЕР ОС 🚦</text>
+      <text class="node-sub" x="445" y="172">это ты</text>
+      <text class="node-sub" x="445" y="186">шпаргалка внизу</text>
+      <g class="cable-g" data-ans="real" tabindex="0" role="button" aria-label="Нести в реальную дверь">
+        <path class="cable-hit" d="M 530 135 C 620 135 620 70 700 70"/>
+        <path class="cable" d="M 530 135 C 620 135 620 70 700 70"/>
+        <rect class="out-box" x="700" y="38" width="200" height="64" rx="12"/>
+        <text class="node-label" x="800" y="66" style="font-size:14px">🚪 Реальная дверь</text>
+        <text class="node-sub" x="800" y="86">сетевая карта → провайдер</text>
+      </g>
+      <g class="cable-g" data-ans="tun" tabindex="0" role="button" aria-label="Нести в волшебную дверь tun0">
+        <path class="cable-hit" d="M 530 185 C 620 185 620 250 700 250"/>
+        <path class="cable" d="M 530 185 C 620 185 620 250 700 250"/>
+        <rect class="out-box" x="700" y="218" width="200" height="64" rx="12"/>
+        <text class="node-label" x="800" y="246" style="font-size:14px">🌀 Волшебная дверь</text>
+        <text class="node-sub" x="800" y="266">tun0 → VPN-клиент → туннель</text>
+      </g>
+      <g id="routePkt" transform="translate(60,160)" style="opacity:0">
+        <rect x="-13" y="-9" width="26" height="18" rx="5" fill="var(--packet)"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10">📦</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="routeStart">🕹 Начать смену диспетчера</button>
+    <button class="btn" id="routeCont" style="display:none">Понятно, продолжить ▶</button>
+    <button class="btn ghost" id="routeReset" style="display:none">Заново</button>
+    <span class="score" id="routeScore"></span>
+  </div>
+  <div class="speech" id="routeSpeech">
+    <span class="ava">🚦</span>
+    <span><span class="who">Начальник почты</span><span class="say">Жми «Начать смену». Пакеты будут прилетать по одному: читай адрес, сверяйся со шпаргалкой НАД сценой и кликай дверь. События по ходу смены ставят игру на паузу — жми «Продолжить», когда дочитаешь.</span></span>
+  </div>
+</section>
+
+<!-- ============ QUIZ ============ -->
+<section id="quiz" class="reveal">
+  <div class="kicker">Проверка</div>
+  <h2>Мини-квиз: перехват засчитан?</h2>
+  <div class="quiz" id="quizBox"></div>
+  <div class="quiz-score" id="quizScore"></div>
+</section>
+
+<footer>
+  <a class="next-link" href="./04-pochemu-menyaetsya-ip.html">Дальше: почему меняется IP <span>→</span></a>
+  <div class="sources">
+    <h3>Источники</h3>
+    <ul>
+      <li>Linux kernel documentation — TUN/TAP interface: <a href="https://docs.kernel.org/networking/tuntap.html">docs.kernel.org/networking/tuntap</a></li>
+      <li>RFC 8985 — The WireGuard VPN Protocol: <a href="https://datatracker.ietf.org/doc/html/rfc8985">datatracker.ietf.org/doc/html/rfc8985</a></li>
+      <li>WireGuard Whitepaper: <a href="https://www.wireguard.com/papers/wireguard.pdf">wireguard.com/papers/wireguard.pdf</a></li>
+      <li>WireGuard Quick Start (маршруты и AllowedIPs): <a href="https://www.wireguard.com/quickstart/">wireguard.com/quickstart</a></li>
+      <li>OpenVPN — Tunneling: <a href="https://docs.openvpn.net/openvpn/tunneling/">docs.openvpn.net/openvpn/tunneling</a></li>
+      <li>OpenVPN Community Resources: <a href="https://openvpn.net/community-resources/how-to/">openvpn.net/community-resources</a></li>
+    </ul>
+  </div>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:30px;font-family:var(--font-mono)">documents_hub / vpn · модуль 03 · статус: draft</p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, RM ? Math.min(ms, 300) : ms));
+
+/* ================= reveal / progress / dots ================= */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+const sections = [...document.querySelectorAll('section')];
+const dots = [...document.querySelectorAll('#dots a')];
+function onScroll(){
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  let cur = sections[0].id;
+  for (const s of sections){ if (s.getBoundingClientRect().top < innerHeight * 0.4) cur = s.id; }
+  dots.forEach(d => d.classList.toggle('on', d.dataset.s === cur));
+}
+addEventListener('scroll', onScroll, { passive:true }); onScroll();
+
+/* ================= helpers ================= */
+function speak(strip, ava, who, text, bad){
+  strip.className = 'speech pop' + (bad ? ' bad' : '');
+  strip.innerHTML = '';
+  const a = document.createElement('span'); a.className = 'ava'; a.textContent = ava;
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
+  const s = document.createElement('span'); s.className = 'say'; s.textContent = text;
+  const wrap = document.createElement('span'); wrap.appendChild(w); wrap.appendChild(s);
+  strip.appendChild(a); strip.appendChild(wrap);
+}
+function movePkt(g, from, to, dur, cancelFn){
+  return new Promise(res => {
+    const t0 = performance.now();
+    if (RM){ g.setAttribute('transform', `translate(${to[0]},${to[1]})`); res(); return; }
+    function step(now){
+      if (cancelFn && cancelFn()){ res(); return; }
+      const k = Math.min((now - t0) / dur, 1);
+      const x = from[0] + (to[0] - from[0]) * k;
+      const y = from[1] + (to[1] - from[1]) * k;
+      g.setAttribute('transform', `translate(${x},${y})`);
+      if (k < 1) requestAnimationFrame(step); else res();
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+/* ================= game 1: hijack path ================= */
+(function hijack(){
+  const pkt = document.getElementById('hijackPkt');
+  const shell = document.getElementById('hijackShell');
+  const lock = document.getElementById('hijackLock');
+  const btn = document.getElementById('hijackGo');
+  const strip = document.getElementById('hijackSpeech');
+  const tog = document.getElementById('vpnToggle');
+  const label = document.getElementById('toggleLabel');
+  const rowsBox = document.getElementById('rtHijackRows');
+  const row2 = [...document.querySelectorAll('.row2')];
+  const hotWires = [...document.querySelectorAll('#hijack .wire-hot')];
+  const prevBtn = document.getElementById('hijackPrev');
+  const nextBtn = document.getElementById('hijackNext');
+  const counter = document.getElementById('hijackStep');
+  const intro = strip.innerHTML;
+  const START = [115,66];
+  let running = false, autoCancel = false, busy = false, idx = -1, cur = START.slice();
+  const curSteps = () => tog.checked ? STEPS_ON : STEPS_OFF;
+
+  function applyStep(i){
+    const st = curSteps()[i];
+    speak(strip, st.ava, st.who, st.say);
+    shell.style.opacity = st.shell ? 1 : 0;
+    lock.style.opacity = st.shell ? 1 : 0;
+    counter.textContent = `шаг ${i+1} из ${curSteps().length}`;
+    prevBtn.disabled = i <= 0;
+    nextBtn.disabled = i >= curSteps().length - 1;
+  }
+  function resetToStart(){
+    idx = -1; cur = START.slice();
+    pkt.setAttribute('transform', `translate(${cur[0]},${cur[1]})`);
+    shell.style.opacity = 0; lock.style.opacity = 0;
+    strip.innerHTML = intro;
+    counter.textContent = `шаг 0 из ${curSteps().length}`;
+    prevBtn.disabled = true; nextBtn.disabled = false;
+  }
+  async function goto(i){
+    busy = true;
+    await movePkt(pkt, cur, curSteps()[i].p, 950, () => autoCancel);
+    cur = curSteps()[i].p.slice();
+    if (autoCancel){ busy = false; return; }
+    idx = i; busy = false;
+    applyStep(i);
+  }
+  async function arrow(dir){
+    if (running) autoCancel = true;
+    while (busy || running) await sleep(60);
+    autoCancel = false;
+    const t = idx + dir;
+    if (t < 0 || t >= curSteps().length) return;
+    await goto(t);
+  }
+  prevBtn.addEventListener('click', () => arrow(-1));
+  nextBtn.addEventListener('click', () => arrow(1));
+
+  const RT_OFF = [
+    { dst:'0.0.0.0/0', gate:'→ 192.168.1.1 · 🚪 реальная дверь (роутер)', hl:false }
+  ];
+  const RT_ON = [
+    { dst:'203.0.113.7/32', gate:'→ 192.168.1.1 · 🚪 реальная дверь (исключение: сам VPN-сервер)', hl:false },
+    { dst:'0.0.0.0/0', gate:'→ tun0 · 🌀 волшебная дверь (VPN-клиент)', hl:true }
+  ];
+  function renderRT(rows){
+    rowsBox.innerHTML = '';
+    rows.forEach(r => {
+      const d = document.createElement('div');
+      d.className = 'rt-row new' + (r.hl ? ' hl' : '');
+      d.innerHTML = `<span class="dst">${r.dst}</span><span>${r.gate}</span>`;
+      rowsBox.appendChild(d);
+    });
+  }
+  function paint(){
+    const on = tog.checked;
+    row2.forEach(el => el.classList.toggle('on', on));
+    hotWires.forEach(w => w.classList.toggle('on', on));
+    label.textContent = on ? 'VPN включён — диспетчер несёт всё в tun0' : 'VPN выключен — пакеты ходят как обычно';
+    label.classList.toggle('on', on);
+    renderRT(on ? RT_ON : RT_OFF);
+  }
+  tog.addEventListener('change', () => {
+    autoCancel = true;
+    paint();
+    resetToStart();
+  });
+  paint();
+
+  const STEPS_OFF = [
+    { p:[115,66],  ava:'📱', who:'Приложение', say:'Вот пакет для сайта 93.184.216.34! Отдаю диспетчеру — дальше не моё дело.' },
+    { p:[310,66],  ava:'🚦', who:'ОС-диспетчер', say:'Сверяюсь со шпаргалкой: 0.0.0.0/0 → реальная дверь. Всё по старинке, никакой магии.' },
+    { p:[530,66],  ava:'📡', who:'Сетевая карта', say:'Приняла! Отправляю по кабелю (или Wi-Fi) — прямиком провайдеру.' },
+    { p:[720,66],  ava:'🏤', who:'Провайдер', say:'Вижу всё: от кого, куда, а без HTTPS (HyperText Transfer Protocol Secure — защищённый веб) — и содержимое. Записываю в журнал 📝' },
+    { p:[885,66],  ava:'🏢', who:'Сайт', say:'Запрос принят! Отвечаю тем же путём в обратную сторону.' }
+  ];
+  const STEPS_ON = [
+    { p:[115,66],  ava:'📱', who:'Приложение', say:'Тот же пакет сайту 93.184.216.34. Я вообще не знаю, что в системе появился VPN — для меня ничего не изменилось.' },
+    { p:[310,66],  ava:'🚦', who:'ОС-диспетчер', say:'Опа, новая шпаргалка: 0.0.0.0/0 → tun0! Несу в волшебную дверь. Исключение — только сам VPN-сервер 203.0.113.7, он пойдёт реальной дверью.' },
+    { p:[310,256], ava:'🚪', who:'TUN (tun0)', say:'Я — виртуальная сетевая карта, дверь без железа: просто очередь в памяти ОС. Пакет упал ко мне — и попал прямо в руки тому, кто стоит за дверью.' },
+    { p:[530,256], ava:'🤖', who:'VPN-клиент', say:'Поймал! Шифрую 🔒, превращаю в нечитаемый шум, упаковываю в новый UDP-конверт (User Datagram Protocol) на порт 51820 и пишу внешние адреса: от тебя — VPN-серверу. Матрёшка готова!', shell:true },
+    { p:[530,66],  ava:'📡', who:'Сетевая карта', say:'Несу обычный пакет до 203.0.113.7. Что там внутри — моё дело маленькое.', shell:true },
+    { p:[720,66],  ava:'🏤', who:'Провайдер', say:'Хм… вижу только зашифрованный пакет для VPN-сервера. Ни сайтов, ни содержимого. Обидно 🤷', shell:true },
+    { p:[720,256], ava:'🛡', who:'VPN-сервер', say:'Снимаю обёртку (декапсуляция), расшифровываю — вот он, твой исходный пакет! Отправляю его сайту уже ОТ СВОЕГО имени.', shell:false },
+    { p:[885,66],  ava:'🏢', who:'Сайт', say:'Запрос получен… от адреса VPN-сервера! Кто ты на самом деле — не знаю. Ответ пойдёт обратно ему же, а он — в твой туннель.' }
+  ];
+
+  document.querySelectorAll('#hijack .node-g').forEach(g => {
+    const act = () => {
+      document.querySelectorAll('#hijack .node-g').forEach(x => x.classList.remove('sel'));
+      g.classList.add('sel');
+      const card = document.querySelector(`#hijackCards .icard[data-for="${g.dataset.node}"]`);
+      if (card){
+        document.querySelectorAll('#hijackCards .icard.sel').forEach(x => x.classList.remove('sel'));
+        card.classList.add('sel');
+        card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+        card.scrollIntoView({ block:'nearest', behavior:'smooth' });
+      }
+    };
+    g.addEventListener('click', act);
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); act(); } });
+  });
+
+  btn.addEventListener('click', async () => {
+    if (running) return;
+    if (idx >= curSteps().length - 1) resetToStart();
+    running = true; autoCancel = false; btn.disabled = true;
+    const steps = curSteps();
+    while (!autoCancel && idx < steps.length - 1){
+      await goto(idx + 1);
+      if (autoCancel) break;
+      for (let w = 0; w < 2000 && !autoCancel; w += 60) await sleep(60);
+    }
+    running = false; btn.disabled = false;
+    const last = curSteps().length - 1;
+    btn.textContent = idx >= last ? '📦 Ещё разок' : '📦 Авто';
+    prevBtn.disabled = idx <= 0; nextBtn.disabled = idx >= last;
+  });
+
+  resetToStart();
+})();
+
+/* ================= game 2: matryoshka builder ================= */
+(function builder(){
+  const strip = document.getElementById('builderSpeech');
+  const done = document.getElementById('builderDone');
+  const chips = [...document.querySelectorAll('#chips .chip')];
+  let filled = 0;
+
+  const GOOD = {
+    inner: 'Сердце матрёшки: твой исходный пакет с конвертом и письмом. Он тут самый главный — ради него всё и затевалось.',
+    crypt: 'Шифрование 🔒 — всё содержимое превращается в нечитаемый шум. Кто перехватит — увидит кашу из байтов (как это работает — модуль 05).',
+    udp:   'Новый конверт UDP (User Datagram Protocol — протокол пользовательских датаграмм, «быстрая почта»). WireGuard стучится на порт 51820, OpenVPN по умолчанию на 1194.',
+    outer: 'Внешние адреса: от тебя (1.2.3.4) → VPN-серверу (203.0.113.7). Их видит провайдер — и только их. Настоящий получатель спрятан внутри.'
+  };
+
+  chips.forEach(c => c.addEventListener('click', () => {
+    const t = c.dataset.target;
+    if (t === 'onion'){
+      c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
+      speak(strip, '🧅', 'Луковица', 'Я из другой оперы: луковичная шифровка — это Tor, там анонимность через цепочку узлов. У нас матрёшка, а не салат. Жди модуль 09! 😄', true);
+      return;
+    }
+    const slot = document.querySelector(`.slot[data-slot="${t}"]`);
+    if (!slot || slot.classList.contains('done')) return;
+    slot.classList.add('done');
+    const d = document.createElement('div'); d.className = 'filled'; d.textContent = c.textContent.replace(/^[^\s]+\s/, '');
+    slot.appendChild(d);
+    c.disabled = true; filled++;
+    speak(strip, '🪆', 'Слой на месте', GOOD[t]);
+    if (filled === 4){
+      done.classList.add('show');
+      speak(strip, '🤖', 'VPN-клиент', 'Матрёшка собрана! Смотри, как она выглядит в разрезе — и жми «Отправить».');
+    }
+  }));
+
+  document.getElementById('builderSend').addEventListener('click', () => {
+    const p = document.getElementById('miniPkt');
+    p.classList.remove('go'); void p.offsetWidth; p.classList.add('go');
+    speak(strip, '🚀', 'Матрёшка ушла!', 'Провайдер поймал только внешний конверт: «данные для 203.0.113.7, порт 51820». Что внутри — тайна для всех, кроме VPN-сервера.');
+  });
+
+  document.getElementById('builderReset').addEventListener('click', () => {
+    filled = 0;
+    document.querySelectorAll('.slot').forEach(s => { s.classList.remove('done'); s.querySelector('.filled')?.remove(); });
+    chips.forEach(c => c.disabled = false);
+    done.classList.remove('show');
+    document.getElementById('miniPkt').classList.remove('go');
+    speak(strip, '🪆', 'VPN-клиент', 'Собери матрёшку из четырёх слоёв. Пятая деталь тут явно лишняя… или я что-то путаю?');
+  });
+})();
+
+/* ================= game 3: dispatcher ================= */
+(function dispatcher(){
+  const RT = {
+    base:  [{ dst:'0.0.0.0/0', gate:'→ 🚪 реальная дверь (192.168.1.1)' }],
+    vpn:   [
+      { dst:'203.0.113.7/32', gate:'→ 🚪 реальная дверь (исключение: VPN-сервер)' },
+      { dst:'0.0.0.0/0', gate:'→ 🌀 tun0 (VPN-клиент)', hl:true }
+    ],
+    split: [
+      { dst:'203.0.113.7/32', gate:'→ 🚪 реальная дверь (исключение: VPN-сервер)' },
+      { dst:'185.203.1.10/32', gate:'→ 🚪 реальная дверь (банк · split tunneling)', hl:true },
+      { dst:'0.0.0.0/0', gate:'→ 🌀 tun0 (VPN-клиент)' }
+    ]
+  };
+  const rowsBox = document.getElementById('rtGameRows');
+  function renderRT(rows){
+    rowsBox.innerHTML = '';
+    rows.forEach(r => {
+      const d = document.createElement('div');
+      d.className = 'rt-row new' + (r.hl ? ' hl' : '');
+      d.innerHTML = `<span class="dst">${r.dst}</span><span>${r.gate}</span>`;
+      rowsBox.appendChild(d);
+    });
+  }
+
+  const PLAN = [
+    { type:'round', dest:'93.184.216.34 · сайт', ans:'real',
+      ok:'Верно! Шпаргалка одна строка: всё → реальная дверь. Так интернет работает всегда (модуль 02).',
+      badHint:'VPN ещё не включён — в шпаргалке только реальная дверь. Неси как обычно!' },
+    { type:'round', dest:'8.8.8.8 · DNS-сервер', ans:'real',
+      ok:'Так точно! Даже запросы к телефонной книге DNS (Domain Name System — система доменных имён) идут напрямую. Пока.',
+      badHint:'Смотри в шпаргалку: 0.0.0.0/0 — это «все адреса» → реальная дверь.' },
+    { type:'event', ava:'⚡', who:'Событие', say:'VPN-клиент запустился и ПЕРЕПИСАЛ шпаргалку: теперь 0.0.0.0/0 → tun0, волшебная дверь! И добавил исключение для собственного сервера 203.0.113.7. Диспетчер, ты на смене — принимай пакеты по новым правилам.', rt:'vpn' },
+    { type:'round', dest:'93.184.216.34 · тот же сайт', ans:'tun',
+      ok:'Именно! Тот же адрес — и уже в волшебную дверь. Вот так выглядит перехват: ОС сама несёт всё в tun0, никто её не взламывал.',
+      badHint:'Шпаргалка обновилась: 0.0.0.0/0 → tun0. Всё, что не исключение, — в волшебную дверь!' },
+    { type:'round', dest:'203.0.113.7 · VPN-сервер', ans:'real',
+      ok:'Блестяще! Это адрес самого VPN-сервера — для него исключение /32 («ровно этот адрес»). Иначе матрёшка попала бы сама в себя: бесконечный цикл!',
+      badHint:'203.0.113.7 — это сам VPN-сервер! Его пакет пойдёт В туннель… и никогда не выйдет. Для него в шпаргалке исключение: реальная дверь.' },
+    { type:'event', ava:'🔀', who:'Событие', say:'Пользователь включил split tunneling (раздельное туннелирование): банковское приложение требует «родную» страну, поэтому для банка 185.203.1.10 добавлено исключение — ходит напрямую. Остальное — по-прежнему в туннель.', rt:'split' },
+    { type:'round', dest:'185.203.1.10 · банк-клиент', ans:'real',
+      ok:'Да! Банк — напрямую, без туннеля: приложение не ругается на «чужую страну». Обратная сторона: этот трафик провайдер видит как на ладони.',
+      badHint:'Для банка в шпаргалке отдельная строка-исключение: 185.203.1.10/32 → реальная дверь. Это и есть split tunneling.' },
+    { type:'round', dest:'172.217.20.46 · видеохостинг', ans:'tun',
+      ok:'Верно! Видео — в туннель: провайдер не узнает, что ты смотришь. Только внешний конверт до VPN-сервера.',
+      badHint:'Исключений для этого адреса нет → работает общая строка 0.0.0.0/0 → tun0.' }
+  ];
+  const END = { real:[800,70], tun:[800,250] };
+  const pkt = document.getElementById('routePkt');
+  const destLbl = document.getElementById('routeDest');
+  const strip = document.getElementById('routeSpeech');
+  const score = document.getElementById('routeScore');
+  const startBtn = document.getElementById('routeStart');
+  const resetBtn = document.getElementById('routeReset');
+  const contBtn = document.getElementById('routeCont');
+  let i = 0, pts = 0, rounds = 0, running = false, started = false;
+
+  function waitContinue(){
+    return new Promise(res => {
+      contBtn.style.display = '';
+      const h = () => { contBtn.removeEventListener('click', h); contBtn.style.display = 'none'; res(); };
+      contBtn.addEventListener('click', h);
+    });
+  }
+
+  async function next(){
+    if (i >= PLAN.length){
+      speak(strip, '🏆', 'Смена окончена', pts === rounds
+        ? `Все ${rounds} пакетов — куда надо! Теперь ты знаешь главную тайну VPN: перехват делает твоя же ОС, потому что ей переписали шпаргалку. Дальше — почему весь интернет начинает считать тебя VPN-сервером.`
+        : `Смена закрыта: ${pts} из ${rounds}. Загляни в шпаргалку ещё раз и попробуй заново — диспетчеру положена переаттестация 😄`);
+      startBtn.style.display = 'none'; resetBtn.style.display = '';
+      return;
+    }
+    const st = PLAN[i];
+    if (st.type === 'event'){
+      renderRT(RT[st.rt]);
+      speak(strip, st.ava, st.who, st.say);
+      pkt.style.opacity = 0;
+      i++;
+      await waitContinue();
+      await next();
+      return;
+    }
+    destLbl.textContent = 'Кому: ' + st.dest;
+    pkt.style.opacity = 0;
+    speak(strip, '📦', `Пакет ${rounds+1} из 6`, `Адрес получателя: ${st.dest}. Ищи подходящую строку в шпаргалке наверху и кликай дверь.`);
+  }
+
+  async function answer(ans, gEl){
+    if (running || !started || i >= PLAN.length) return;
+    const st = PLAN[i];
+    if (st.type !== 'round') return;
+    if (ans === st.ans){
+      running = true; pts++; rounds++;
+      score.textContent = `✅ ${pts} / ${rounds}`;
+      gEl.classList.add('ok');
+      pkt.style.opacity = 1;
+      speak(strip, '🚦', 'Диспетчер', st.ok);
+      await movePkt(pkt, [60,160], END[ans], 850);
+      gEl.classList.remove('ok');
+      pkt.style.opacity = 0;
+      i++;
+      await sleep(2200);
+      running = false;
+      await next();
+    } else {
+      gEl.classList.add('err');
+      speak(strip, '❌', 'Мимо двери!', st.badHint, true);
+      setTimeout(() => gEl.classList.remove('err'), 500);
+    }
+  }
+
+  document.querySelectorAll('.cable-g').forEach(g => {
+    g.addEventListener('click', () => answer(g.dataset.ans, g));
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); answer(g.dataset.ans, g); } });
+  });
+
+  startBtn.addEventListener('click', async () => {
+    started = true; running = false; startBtn.disabled = true;
+    renderRT(RT.base);
+    await next();
+  });
+  resetBtn.addEventListener('click', () => {
+    i = 0; pts = 0; rounds = 0; score.textContent = '';
+    contBtn.style.display = 'none';
+    resetBtn.style.display = 'none'; startBtn.style.display = ''; startBtn.disabled = false;
+    renderRT(RT.base);
+    speak(strip, '🚦', 'Начальник почты', 'Новая смена! Жми «Начать смену диспетчера» — и сверяйся со шпаргалкой наверху.');
+  });
+  renderRT(RT.base);
+})();
+
+/* ================= quiz ================= */
+(function quiz(){
+  const QUIZ = [
+    { q: 'Что такое TUN-интерфейс (tun0)?',
+      a: ['Виртуальная сетевая карта внутри твоего компьютера', 'Особая антенна на роутере', 'Протокол шифрования'], right: 0,
+      ex: 'TUN (network TUNnel — «сетевой туннель») — дверь без железа: очередь в памяти ОС. Пакет падает в tun0 и попадает в руки VPN-клиенту, который стоит за дверью.' },
+    { q: 'Как VPN «перехватывает» твой трафик?',
+      a: ['Взламывает кабель провайдера', 'Переписывает таблицу маршрутизации — и ОС сама несёт пакеты в tun0', 'Перехватывает пакеты на VPN-сервере провайдера'], right: 1,
+      ex: 'Никакого взлома: VPN-клиент добавляет маршрут по умолчанию 0.0.0.0/0 → tun0, и твоя же операционная система честно относит туда каждый пакет.' },
+    { q: 'Почему трафик к самому VPN-серверу не уходит в туннель (и не зацикливается)?',
+      a: ['Он уходит, но сервер его выплёвывает', 'Для адреса сервера есть исключение /32 через реальную дверь — точный маршрут побеждает общий', 'VPN-сервер всегда в той же локальной сети'], right: 1,
+      ex: 'В таблице стоит строка 203.0.113.7/32 → обычная дверь. /32 («ровно этот адрес») точнее, чем /0 («все адреса»), поэтому внешний конверт матрёшки уходит напрямую.' },
+    { q: 'Что видит провайдер, когда у тебя включён VPN?',
+      a: ['Все сайты, которые ты открываешь', 'Вообще ничего, ты для него невидим', 'Только внешний конверт: зашифрованные данные до IP VPN-сервера, объём и время'], right: 2,
+      ex: 'Инкапсуляция прячет всё содержимое и настоящие адреса. Но сам факт соединения с VPN-сервером, объём и время провайдер видит — ты же уходишь в интернет через его дверь.' },
+    { q: 'Зачем нужен split tunneling (раздельное туннелирование)?',
+      a: ['Чтобы часть трафика шла через туннель, а часть — напрямую', 'Чтобы шифровать данные дважды', 'Чтобы делить скорость между устройствами'], right: 0,
+      ex: 'В таблицу добавляют избирательные маршруты: например, банк — напрямую (иначе ругается на «чужую страну»), остальное — в туннель. Плата за это: «прямой» трафик провайдер видит полностью.' }
+  ];
+  const qBox = document.getElementById('quizBox');
+  let answered = 0, correct = 0;
+  QUIZ.forEach((item, qi) => {
+    const d = document.createElement('div'); d.className = 'q reveal';
+    const h = document.createElement('h3'); h.textContent = `Вопрос ${qi+1}. ${item.q}`;
+    d.appendChild(h);
+    item.a.forEach((txt, ai) => {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="radio" name="q${qi}" value="${ai}"><span>${txt}</span>`;
+      l.querySelector('input').addEventListener('change', () => {
+        if (d.classList.contains('answered')) return;
+        d.classList.add('answered');
+        const labels = [...d.querySelectorAll('label')];
+        labels[item.right].classList.add('right');
+        if (ai !== item.right) labels[ai].classList.add('wrong'); else correct++;
+        answered++;
+        const ex = document.createElement('div'); ex.className = 'expl'; ex.textContent = item.ex; d.appendChild(ex);
+        labels.forEach(x => x.querySelector('input').disabled = true);
+        document.getElementById('quizScore').textContent = answered === QUIZ.length ? `Результат: ${correct} / ${QUIZ.length}` : '';
+      });
+      d.appendChild(l);
+    });
+    qBox.appendChild(d);
+    io.observe(d);
+  });
+})();
+
+/* ================= hero background ================= */
+(function heroBg(){
+  if (RM) return;
+  const svg = document.getElementById('hero-bg');
+  svg.setAttribute('viewBox','0 0 1060 600'); svg.setAttribute('preserveAspectRatio','xMidYMid slice');
+  for (let i = 0; i < 14; i++){
+    const y = 30 + Math.random() * 540, dur = 9 + Math.random() * 14, delay = -Math.random() * dur;
+    const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x','-30'); r.setAttribute('y', y); r.setAttribute('width', 16 + Math.random()*22);
+    r.setAttribute('height','5'); r.setAttribute('rx','2.5');
+    r.setAttribute('fill', Math.random() < .3 ? 'var(--accent)' : 'var(--line)');
+    r.style.opacity = .25 + Math.random()*.4;
+    const a = document.createElementNS('http://www.w3.org/2000/svg','animate');
+    a.setAttribute('attributeName','x'); a.setAttribute('from','-40'); a.setAttribute('to','1100');
+    a.setAttribute('dur', dur + 's'); a.setAttribute('begin', delay + 's'); a.setAttribute('repeatCount','indefinite');
+    r.appendChild(a); svg.appendChild(r);
+  }
+})();
+</script>
+</body>
+</html>

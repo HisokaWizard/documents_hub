@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Модуль 01 · Что такое VPN и зачем он нужен</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0E13;
+  --surface:#111823;
+  --surface2:#18212E;
+  --line:#232F3F;
+  --ink:#E8EEF4;
+  --muted:#8A97A4;
+  --accent:#35E0A1;      /* mint — VPN / tunnel */
+  --accent-dim:rgba(53,224,161,.14);
+  --exposed:#FF7A6B;     /* coral — what others see */
+  --exposed-dim:rgba(255,122,107,.13);
+  --packet:#58A6FF;      /* blue — your packet */
+  --radius:14px;
+  --font-head:'Unbounded',system-ui,sans-serif;
+  --font-body:'Golos Text',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:var(--font-body);font-size:17px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent);color:#04120C}
+
+/* ---------- progress + nav ---------- */
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:100;transition:width .15s linear}
+#dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;z-index:90}
+#dots a{width:9px;height:9px;border-radius:50%;background:var(--line);display:block;transition:all .3s}
+#dots a.on{background:var(--accent);transform:scale(1.45)}
+@media(max-width:900px){#dots{display:none}}
+
+/* ---------- layout ---------- */
+main{max-width:1060px;margin:0 auto;padding:0 28px}
+section{padding:96px 0 40px;min-height:60vh}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:none}
+.kicker{font-family:var(--font-mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1{font-family:var(--font-head);font-weight:800;font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.01em}
+h2{font-family:var(--font-head);font-weight:600;font-size:clamp(22px,3.2vw,32px);line-height:1.25;margin-bottom:18px}
+p.lead{color:var(--muted);font-size:19px;max-width:640px;margin-top:18px}
+p+p{margin-top:14px}
+.term{color:var(--accent);font-weight:600}
+code,.mono{font-family:var(--font-mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:#BFD4E6}
+
+/* ---------- hero ---------- */
+#hero{min-height:92vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+#hero-bg{position:absolute;inset:0;pointer-events:none;opacity:.5}
+.hero-badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;margin-bottom:26px;width:max-content}
+.hero-badge b{color:var(--accent);font-weight:600}
+.scroll-hint{margin-top:56px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:10px}
+.scroll-hint .arrow{display:inline-block;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+
+/* ---------- scene ---------- */
+.scene-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:26px}
+.scene-svg{width:100%;height:auto;display:block}
+.node-g{cursor:pointer}
+.node-g .node-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .3s,fill .3s}
+.node-g:hover .node-box,.node-g.sel .node-box{stroke:var(--accent)}
+.node-g.sel .node-box{fill:#16211C}
+.node-g:focus{outline:none}
+.node-g:focus-visible .node-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+.node-g.hidden-node{pointer-events:none;cursor:default}
+.node-label{font-family:var(--font-body);font-size:15px;font-weight:600;fill:var(--ink);text-anchor:middle}
+.node-sub{font-family:var(--font-mono);font-size:10.5px;fill:var(--muted);text-anchor:middle}
+.wire{stroke:var(--line);stroke-width:2;fill:none}
+.wire-hot{stroke:var(--accent);stroke-width:2;fill:none;stroke-dasharray:7 7;opacity:0;transition:opacity .6s}
+.wire-hot.on{opacity:1;animation:dash 1.2s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-28}}
+#vpnNode{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+#vpnNode.on{opacity:1;transform:none}
+.tunnel-shell{fill:var(--accent-dim);stroke:var(--accent);stroke-width:1.5;stroke-dasharray:5 6;rx:16;opacity:0;transition:opacity .6s}
+.tunnel-shell.on{opacity:1;animation:dash 1.6s linear infinite}
+
+/* toggle */
+.toggle-row{display:flex;align-items:center;gap:16px;margin-top:18px;flex-wrap:wrap}
+.switch{position:relative;width:64px;height:34px;flex:0 0 auto}
+.switch input{opacity:0;width:100%;height:100%;position:absolute;cursor:pointer;z-index:2;margin:0}
+.slider{position:absolute;inset:0;background:var(--surface2);border:1px solid var(--line);border-radius:999px;transition:.35s}
+.slider::before{content:'';position:absolute;width:24px;height:24px;left:4px;top:4px;border-radius:50%;background:var(--muted);transition:.35s}
+.switch input:checked+.slider{background:var(--accent-dim);border-color:var(--accent)}
+.switch input:checked+.slider::before{transform:translateX(30px);background:var(--accent)}
+.switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:3px}
+.toggle-label{font-family:var(--font-mono);font-size:14px;color:var(--muted);transition:color .3s}
+.toggle-label.on{color:var(--accent)}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:9px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:11px;padding:11px 20px;font-family:var(--font-body);font-size:15px;font-weight:600;cursor:pointer;transition:transform .25s,box-shadow .25s,opacity .25s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 0 20px rgba(53,224,161,.22)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
+
+/* visibility cards */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+@media(max-width:820px){.cards{grid-template-columns:1fr}}
+.vcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 14px;transition:border-color .35s,background .35s;min-height:150px}
+.vcard h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:9px;margin-bottom:10px}
+.vcard .eye{width:9px;height:9px;border-radius:50%;background:var(--exposed);box-shadow:0 0 10px var(--exposed);flex:0 0 auto}
+.vcard .eye.safe{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.vcard ul{list-style:none}
+.vcard li{font-size:14px;color:var(--muted);padding:4px 0 4px 18px;position:relative}
+.vcard li::before{content:'';position:absolute;left:2px;top:12px;width:6px;height:6px;border-radius:2px;background:var(--exposed);opacity:.75}
+.vcard li.good::before{background:var(--accent)}
+.vcard.sel{border-color:var(--accent);background:#16211C}
+.vcard.flash{animation:flash .5s ease}
+@keyframes flash{0%{background:var(--exposed-dim)}100%{background:var(--surface)}}
+
+/* ---------- properties ---------- */
+.props{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:30px}
+@media(max-width:820px){.props{grid-template-columns:1fr}}
+.prop{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px;transition:transform .35s,border-color .35s}
+.prop:hover{transform:translateY(-5px);border-color:var(--accent)}
+.prop .num{font-family:var(--font-mono);font-size:13px;color:var(--accent);margin-bottom:12px}
+.prop h3{font-size:17px;margin-bottom:8px;font-weight:700}
+.prop p{font-size:14.5px;color:var(--muted)}
+
+/* encapsulation demo */
+.encap{margin-top:34px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.encap-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center}
+.pkt{font-family:var(--font-mono);font-size:13px;border-radius:10px;padding:12px 18px;border:1.5px solid}
+.pkt.inner{background:rgba(88,166,255,.1);border-color:var(--packet);color:#ADCBFF}
+.pkt.outer{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);padding:20px 26px;display:flex;align-items:center;gap:14px}
+.encap-note{font-size:13.5px;color:var(--muted);text-align:center;max-width:560px;margin-top:8px}
+
+/* ---------- scenarios accordion ---------- */
+.acc{margin-top:28px;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+.acc-item{border-bottom:1px solid var(--line)}
+.acc-item:last-child{border-bottom:none}
+.acc-head{width:100%;background:none;border:none;color:var(--ink);font-family:var(--font-body);font-size:16.5px;font-weight:600;text-align:left;padding:20px 24px;cursor:pointer;display:flex;align-items:center;gap:16px;transition:background .25s}
+.acc-head:hover{background:var(--surface2)}
+.acc-head .idx{font-family:var(--font-mono);font-size:13px;color:var(--accent)}
+.acc-head .chev{margin-left:auto;transition:transform .35s;color:var(--muted)}
+.acc-item.open .chev{transform:rotate(180deg)}
+.acc-body{max-height:0;overflow:hidden;transition:max-height .45s ease}
+.acc-body-inner{padding:0 24px 22px 60px;color:var(--muted);font-size:15px}
+.acc-body-inner b{color:var(--ink)}
+
+/* ---------- myths ---------- */
+.myths{margin-top:28px;display:flex;flex-direction:column;gap:14px}
+.myth{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px 24px;display:flex;gap:18px;align-items:flex-start}
+.myth .x{font-family:var(--font-mono);color:var(--exposed);font-size:20px;line-height:1;margin-top:3px}
+.myth h3{font-size:16px;margin-bottom:6px;position:relative;width:max-content;max-width:100%}
+.myth h3::after{content:'';position:absolute;left:0;top:52%;height:2px;width:0;background:var(--exposed);transition:width .8s ease .3s}
+.myth.visible h3::after{width:100%}
+.myth p{font-size:14.5px;color:var(--muted)}
+
+/* ---------- quiz ---------- */
+.quiz{margin-top:28px;display:flex;flex-direction:column;gap:20px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.q h3{font-size:16.5px;margin-bottom:16px;font-weight:600}
+.q label{display:flex;gap:12px;align-items:flex-start;padding:11px 14px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;cursor:pointer;font-size:15px;transition:border-color .25s,background .25s}
+.q label:hover{border-color:var(--muted)}
+.q input{accent-color:var(--accent);margin-top:4px;flex:0 0 auto}
+.q label.right{border-color:var(--accent);background:var(--accent-dim)}
+.q label.wrong{border-color:var(--exposed);background:var(--exposed-dim)}
+.q .expl{display:none;font-size:14px;color:var(--muted);margin-top:10px;padding-top:12px;border-top:1px dashed var(--line)}
+.q.answered .expl{display:block}
+.quiz-score{font-family:var(--font-mono);color:var(--accent);font-size:15px;margin-top:6px;min-height:24px}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line);margin-top:80px;padding:44px 0 70px}
+.next-link{display:inline-flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius);padding:16px 26px;font-weight:600;text-decoration:none;transition:transform .3s,box-shadow .3s}
+.next-link:hover{transform:translateX(6px);box-shadow:0 0 26px rgba(53,224,161,.25)}
+.sources{margin-top:34px}
+.sources h3{font-size:15px;margin-bottom:10px;color:var(--muted);font-weight:600}
+.sources li{font-size:14px;color:var(--muted);margin-left:20px;padding:2px 0}
+.sources a{color:#ADCBFF}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
+  html{scroll-behavior:auto}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<nav id="dots" aria-label="Навигация по секциям">
+  <a href="#hero" data-s="hero"></a>
+  <a href="#path" data-s="path"></a>
+  <a href="#vpn-on" data-s="vpn-on"></a>
+  <a href="#def" data-s="def"></a>
+  <a href="#cases" data-s="cases"></a>
+  <a href="#myths" data-s="myths"></a>
+  <a href="#quiz" data-s="quiz"></a>
+</nav>
+
+<main>
+
+<!-- ============ HERO ============ -->
+<section id="hero">
+  <svg id="hero-bg" aria-hidden="true"></svg>
+  <div class="hero-badge">Курс «VPN: как это работает» · <b>Модуль 01</b> / 10</div>
+  <h1>Что такое VPN<br>и зачем он нужен</h1>
+  <p class="lead">Прежде чем говорить о туннелях и шифровании, разберёмся с базовым вопросом: кто вообще видит ваш трафик, когда VPN выключен — и что меняется, когда он включён.</p>
+  <div class="scroll-hint"><span class="arrow">↓</span> Листайте — дальше интерактивная схема</div>
+</section>
+
+<!-- ============ PATH WITHOUT VPN ============ -->
+<section id="path" class="reveal">
+  <div class="kicker">Сцена 1 · Без VPN</div>
+  <h2>Ваш запрос идёт не напрямую</h2>
+  <p>Когда вы открываете сайт, пакет данных проходит цепочку посредников: ваш роутер, провайдер (ISP — Internet Service Provider), транзитные сети. Каждый из них что-то о вас узнаёт.</p>
+  <p style="color:var(--muted);font-size:15px;margin-top:10px">Кликайте по узлам схемы — карточки ниже покажут, <b style="color:var(--exposed)">кто что видит</b>.</p>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 300" role="img" aria-label="Путь пакета от вас к сайту">
+      <!-- wires -->
+      <path id="wireMain" class="wire" d="M 100 150 H 860"/>
+      <path id="wireDetour" class="wire-hot" d="M 100 150 H 320 C 400 150 400 230 480 230 C 560 230 560 150 640 150 H 860"/>
+      <rect id="tunnelShell" class="tunnel-shell" x="86" y="118" width="410" height="144" rx="18"/>
+      <!-- nodes -->
+      <g class="node-g" id="n-you" data-node="you" tabindex="0" role="button" aria-label="Ваше устройство">
+        <rect class="node-box" x="30" y="106" width="140" height="88" rx="12"/>
+        <text class="node-label" x="100" y="146">Вы</text>
+        <text class="node-sub" x="100" y="168">ноутбук</text>
+        <text class="node-sub" x="100" y="182">192.168.1.10</text>
+      </g>
+      <g class="node-g" id="n-isp" data-node="isp" tabindex="0" role="button" aria-label="Провайдер">
+        <rect class="node-box" x="250" y="106" width="140" height="88" rx="12"/>
+        <text class="node-label" x="320" y="146">Провайдер</text>
+        <text class="node-sub" x="320" y="168">ISP</text>
+        <text class="node-sub" x="320" y="182">ваш оператор</text>
+      </g>
+      <g class="node-g hidden-node" id="n-vpn" data-node="vpn" tabindex="-1" role="button" aria-hidden="true" aria-label="VPN-сервер">
+        <g id="vpnNode">
+          <rect class="node-box" x="410" y="186" width="140" height="88" rx="12" style="stroke:var(--accent)"/>
+          <text class="node-label" x="480" y="226" style="fill:var(--accent)">VPN-сервер</text>
+          <text class="node-sub" x="480" y="248">ваш выход в сеть</text>
+          <text class="node-sub" x="480" y="262">203.0.113.7</text>
+        </g>
+      </g>
+      <g class="node-g" id="n-net" data-node="net" tabindex="0" role="button" aria-label="Интернет">
+        <rect class="node-box" x="590" y="106" width="140" height="88" rx="12"/>
+        <text class="node-label" x="660" y="146">Интернет</text>
+        <text class="node-sub" x="660" y="168">транзитные сети</text>
+      </g>
+      <g class="node-g" id="n-site" data-node="site" tabindex="0" role="button" aria-label="Сайт">
+        <rect class="node-box" x="790" y="106" width="140" height="88" rx="12"/>
+        <text class="node-label" x="860" y="146">Сайт</text>
+        <text class="node-sub" x="860" y="168">example.com</text>
+        <text class="node-sub" x="860" y="182">93.184.216.34</text>
+      </g>
+      <!-- packet -->
+      <g id="packetG">
+        <rect id="pktOuter" x="-26" y="-17" width="52" height="34" rx="9" fill="rgba(53,224,161,.15)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 4" style="opacity:0"/>
+        <rect id="pktInner" x="-15" y="-10" width="30" height="20" rx="6" fill="var(--packet)"/>
+        <text id="pktLock" x="0" y="4.5" text-anchor="middle" font-size="11" font-family="var(--font-mono)" fill="#04120C" style="opacity:0">🔒</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="pathGo">📦 Отправить пакет</button>
+    <span style="color:var(--muted);font-size:13.5px">пакет пройдёт весь путь — от вас до сайта</span>
+  </div>
+
+  <div class="cards" id="visCards">
+    <div class="vcard" data-for="isp">
+      <h3><span class="eye" id="eye-isp"></span>Провайдер видит</h3>
+      <ul id="list-isp"></ul>
+    </div>
+    <div class="vcard" data-for="site">
+      <h3><span class="eye" id="eye-site"></span>Сайт видит</h3>
+      <ul id="list-site"></ul>
+    </div>
+    <div class="vcard" data-for="vpn" id="card-vpn" style="display:none">
+      <h3><span class="eye safe"></span>VPN-сервер видит</h3>
+      <ul id="list-vpn"></ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VPN ON ============ -->
+<section id="vpn-on" class="reveal">
+  <div class="kicker">Сцена 2 · Включаем VPN</div>
+  <h2>Один переключатель — и картина меняется</h2>
+  <p>Включите VPN на схеме выше и посмотрите, как изменился путь пакета и список того, кто что видит. Пакет теперь движется внутри <span class="term">туннеля (tunnel)</span> — зашифрованной оболочки от вас до VPN-сервера.</p>
+  <div class="toggle-row">
+    <span class="switch">
+      <input type="checkbox" id="vpnToggle" aria-label="Включить VPN">
+      <span class="slider"></span>
+    </span>
+    <span class="toggle-label" id="toggleLabel">VPN выключен — трафик идёт как есть</span>
+  </div>
+</section>
+
+<!-- ============ DEFINITION ============ -->
+<section id="def" class="reveal">
+  <div class="kicker">Определение</div>
+  <h2>Так что же такое VPN</h2>
+  <p><span class="term">VPN (Virtual Private Network</span> — виртуальная частная сеть) — это способ провести свой трафик через чужую, недоверенную сеть (интернет) так, будто у вас есть прямой приватный кабель до своего сервера.</p>
+  <div class="props">
+    <div class="prop"><div class="num">01</div><h3>Туннель</h3><p>Весь ваш трафик перехватывается на вашем же устройстве и направляется в точку выхода — VPN-сервер. Посредники видят только сам факт туннеля.</p></div>
+    <div class="prop"><div class="num">02</div><h3>Шифрование</h3><p>Содержимое туннеля зашифровано: провайдер и транзитные сети видят случайные байты, а не адреса сайтов и не данные запросов.</p></div>
+    <div class="prop"><div class="num">03</div><h3>Своя точка выхода</h3><p>Запросы в интернет уходят с VPN-сервера. Сайты видят его IP-адрес вместо вашего — так и «меняется» источник.</p></div>
+  </div>
+
+  <div class="encap reveal">
+    <div class="kicker" style="margin-bottom:10px">Инкапсуляция (encapsulation)</div>
+    <div class="encap-row">
+      <div class="pkt outer">
+        <span>🔒</span>
+        <div class="pkt inner">GET / HTTP/1.1 · Host: example.com · от 192.168.1.10</div>
+      </div>
+    </div>
+    <p class="encap-note">Ваш запрос (синий) упаковывается в зашифрованную внешнюю оболочку (зелёная), адресованную VPN-серверу. Провайдер видит только оболочку: «какие-то данные идут на vpn.example:51820». Что внутри — знает только VPN-сервер, который распакует пакет и отправит дальше уже от своего имени.</p>
+  </div>
+</section>
+
+<!-- ============ CASES ============ -->
+<section id="cases" class="reveal">
+  <div class="kicker">Зачем</div>
+  <h2>Четыре причины включить VPN</h2>
+  <div class="acc" id="acc">
+    <div class="acc-item">
+      <button class="acc-head" aria-expanded="false"><span class="idx">01</span>Приватность в чужих сетях<span class="chev">▾</span></button>
+      <div class="acc-body"><div class="acc-body-inner">Кафе, аэропорт, отель: владелец Wi-Fi (или злоумышленник в той же сети) может перехватывать трафик. VPN шифрует всё до вашего сервера — локальная сеть видит только шифротекст. Особенно важно без HTTPS, но и с HTTPS VPN скрывает сами факты обращений к доменам.</div></div>
+    </div>
+    <div class="acc-item">
+      <button class="acc-head" aria-expanded="false"><span class="idx">02</span>Обход блокировок и гео-ограничений<span class="chev">▾</span></button>
+      <div class="acc-body"><div class="acc-body-inner">Блокировки работают по IP-адресам и доменам, которые видит провайдер. С VPN провайдер видит только адрес VPN-сервера — блокировать придётся его целиком. Сайты с гео-ограничениями видят страну сервера, а не вашу.</div></div>
+    </div>
+    <div class="acc-item">
+      <button class="acc-head" aria-expanded="false"><span class="idx">03</span>Удалённый доступ к корпоративной сети<span class="chev">▾</span></button>
+      <div class="acc-body"><div class="acc-body-inner">Классический сценарий, ради которого VPN и изобрели: из дома вы подключаетесь к офисному VPN-шлюзу и получаете доступ к внутренним сервисам (базы, панели, файлы), как если бы ваш компьютер стоял в офисе. Внутренняя сеть при этом не торчит наружу.</div></div>
+    </div>
+    <div class="acc-item">
+      <button class="acc-head" aria-expanded="false"><span class="idx">04</span>Связь офисов и серверов (site-to-site)<span class="chev">▾</span></button>
+      <div class="acc-body"><div class="acc-body-inner">Два дата-центра или офиса соединяются постоянным VPN-туннелем через интернет и работают как одна приватная сеть — вместо дорогой выделенной линии. Отдельные машины тоже так умеют: mesh-сети вроде Tailscale строят туннели между всеми вашими устройствами напрямую.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MYTHS ============ -->
+<section id="myths" class="reveal">
+  <div class="kicker">Честность</div>
+  <h2>Чего VPN не делает</h2>
+  <div class="myths">
+    <div class="myth reveal"><span class="x">✕</span><div><h3>«VPN = анонимность»</h3><p>Весь ваш трафик проходит через VPN-сервер в открытом виде (после распаковки туннеля). Провайдер VPN видит то же, что раньше видел ваш ISP: куда, когда и сколько. Анонимность — это другая технология (Tor) и другая модель угроз.</p></div></div>
+    <div class="myth reveal"><span class="x">✕</span><div><h3>«VPN защищает от всего»</h3><p>Фишинг, вредоносные сайты, трекеры внутри страниц, слабые пароли — VPN от этого не защищает. Он защищает только канал передачи, а не вас.</p></div></div>
+    <div class="myth reveal"><span class="x">✕</span><div><h3>«С VPN интернет быстрее»</h3><p>Почти всегда наоборот: трафик делает крюк до VPN-сервера и обратно, плюс расходы на шифрование. Быстрее — только если ваш провайдер намеренно замедляет конкретные сервисы, а VPN это скрывает.</p></div></div>
+  </div>
+</section>
+
+<!-- ============ QUIZ ============ -->
+<section id="quiz" class="reveal">
+  <div class="kicker">Проверка</div>
+  <h2>Мини-квиз</h2>
+  <div class="quiz" id="quizBox"></div>
+  <div class="quiz-score" id="quizScore"></div>
+</section>
+
+<footer>
+  <a class="next-link" href="./02-kak-rabotaet-internet-bez-vpn.html">Дальше: путь пакета без VPN <span>→</span></a>
+  <div class="sources">
+    <h3>Источники</h3>
+    <ul>
+      <li>RFC 8985 — The WireGuard VPN Protocol: <a href="https://datatracker.ietf.org/doc/html/rfc8985">datatracker.ietf.org/doc/html/rfc8985</a></li>
+      <li>WireGuard: Whitepaper — концепция туннеля L3: <a href="https://www.wireguard.com/papers/wireguard.pdf">wireguard.com/papers/wireguard.pdf</a></li>
+      <li>OpenVPN documentation — routing и tunneling: <a href="https://openvpn.net/community-resources/">openvpn.net/community-resources</a></li>
+      <li>MDN — Public-key cryptography (база по шифрованию): <a href="https://developer.mozilla.org/en-US/docs/Glossary/Public-key_cryptography">developer.mozilla.org</a></li>
+    </ul>
+  </div>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:30px;font-family:var(--font-mono)">documents_hub / vpn · модуль 01 · статус: draft</p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+/* ================= state ================= */
+const vpnOn = () => document.getElementById('vpnToggle').checked;
+
+/* ================= reveal ================= */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+/* ================= progress + dots ================= */
+const sections = [...document.querySelectorAll('section')];
+const dots = [...document.querySelectorAll('#dots a')];
+function onScroll(){
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  let cur = sections[0].id;
+  for (const s of sections){ if (s.getBoundingClientRect().top < innerHeight * 0.4) cur = s.id; }
+  dots.forEach(d => d.classList.toggle('on', d.dataset.s === cur));
+}
+addEventListener('scroll', onScroll, { passive:true }); onScroll();
+
+/* ================= visibility data ================= */
+const VIS = {
+  off: {
+    isp:  { items: ['Ваш реальный IP-адрес', 'Адреса и домены, куда вы идёте (DNS — система доменных имён, SNI — указание имени сервера)', 'Время, объём и частоту запросов', 'Содержимое — только если сайт без HTTPS (зашифрованной версии протокола)'], good: [] },
+    site: { items: ['Ваш реальный IP-адрес', 'User-Agent, куки, данные запроса', 'Вашу историю действий на сайте'], good: [] },
+    vpn:  { items: [], good: [] }
+  },
+  on: {
+    isp:  { items: ['Факт соединения с VPN-сервером', 'Объём и время трафика — и всё'], good: ['НЕ видит домены и адреса сайтов', 'НЕ видит содержимое — только шифротекст'] },
+    site: { items: ['IP-адрес VPN-сервера вместо вашего', 'Данные запроса (как обычно)'], good: ['НЕ видит ваш реальный IP'] },
+    vpn:  { items: ['Ваш реальный IP', 'Весь ваш трафик в открытом виде', 'Домены и содержимое запросов'], good: [] }
+  }
+};
+function renderCards(mode, flash){
+  for (const who of ['isp','site','vpn']){
+    const d = VIS[mode][who], ul = document.getElementById('list-' + who);
+    ul.innerHTML = '';
+    d.items.forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+    d.good.forEach(t => { const li = document.createElement('li'); li.className = 'good'; li.textContent = t; ul.appendChild(li); });
+    if (who !== 'vpn' && flash){
+      const card = document.querySelector(`.vcard[data-for="${who}"]`);
+      card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+    }
+  }
+  document.getElementById('eye-isp').className = 'eye' + (mode === 'on' ? ' safe' : '');
+  document.getElementById('eye-site').className = 'eye' + (mode === 'on' ? ' safe' : '');
+  document.getElementById('card-vpn').style.display = mode === 'on' ? '' : 'none';
+}
+renderCards('off', false);
+
+/* node click → highlight card */
+document.querySelectorAll('.node-g').forEach(g => {
+  const act = () => {
+    if (g.classList.contains('hidden-node')) return;
+    document.querySelectorAll('.node-g').forEach(x => x.classList.remove('sel'));
+    g.classList.add('sel');
+    const card = document.querySelector(`.vcard[data-for="${g.dataset.node}"]`);
+    if (card && card.style.display !== 'none'){
+      document.querySelectorAll('.vcard.sel').forEach(x => x.classList.remove('sel'));
+      card.classList.add('sel');
+      card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+      card.scrollIntoView({ block:'nearest', behavior:'smooth' });
+    }
+  };
+  g.addEventListener('click', act);
+  g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); act(); } });
+});
+
+/* ================= packet animation: по требованию, одна полная поездка ================= */
+const pathOff = document.getElementById('wireMain');
+const pathOn  = document.getElementById('wireDetour');
+const pktG = document.getElementById('packetG');
+const pktOuter = document.getElementById('pktOuter');
+const pktLock = document.getElementById('pktLock');
+const pathGoBtn = document.getElementById('pathGo');
+const VPN_X = 480;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let flying = false;
+
+pktG.style.opacity = 0;
+
+function setShell(on){
+  pktOuter.style.opacity = on ? 1 : 0;
+  pktLock.style.opacity = on ? 1 : 0;
+}
+function runPacket(){
+  if (flying) return;
+  const on = vpnOn();
+  const path = on ? pathOn : pathOff;
+  const len = path.getTotalLength();
+  const dur = on ? 4200 : 3000;
+  pktG.style.opacity = 1;
+  setShell(false);
+  if (reduce){
+    const pt = path.getPointAtLength(len);
+    pktG.setAttribute('transform', `translate(${pt.x},${pt.y})`);
+    setShell(false);
+    return;
+  }
+  flying = true; pathGoBtn.disabled = true;
+  const t0 = performance.now();
+  function step(now){
+    const k = Math.min((now - t0) / dur, 1);
+    const pt = path.getPointAtLength(k * len);
+    pktG.setAttribute('transform', `translate(${pt.x},${pt.y})`);
+    setShell(on && pt.x < VPN_X);
+    if (k < 1) requestAnimationFrame(step);
+    else { setShell(false); pktG.style.opacity = 0; flying = false; pathGoBtn.disabled = false; }
+  }
+  requestAnimationFrame(step);
+}
+pathGoBtn.addEventListener('click', runPacket);
+
+/* ================= toggle ================= */
+const tog = document.getElementById('vpnToggle');
+tog.addEventListener('change', () => {
+  const on = tog.checked;
+  document.getElementById('vpnNode').classList.toggle('on', on);
+  document.getElementById('wireDetour').classList.toggle('on', on);
+  document.getElementById('tunnelShell').classList.toggle('on', on);
+  const nVpn = document.getElementById('n-vpn');
+  nVpn.classList.toggle('hidden-node', !on);
+  nVpn.setAttribute('tabindex', on ? '0' : '-1');
+  if (on){
+    nVpn.removeAttribute('aria-hidden');
+  } else {
+    nVpn.setAttribute('aria-hidden', 'true');
+    document.getElementById('card-vpn').classList.remove('sel');
+    if (nVpn.classList.contains('sel')) nVpn.classList.remove('sel');
+  }
+  document.getElementById('toggleLabel').textContent = on
+    ? 'VPN включён — трафик в зашифрованном туннеле'
+    : 'VPN выключен — трафик идёт как есть';
+  document.getElementById('toggleLabel').classList.toggle('on', on);
+  renderCards(on ? 'on' : 'off', true);
+});
+tog.addEventListener('change', function(){}, false);
+
+/* scroll section 2 into view when toggling from far away */
+document.getElementById('toggleLabel').addEventListener('click', () => { tog.checked = !tog.checked; tog.dispatchEvent(new Event('change')); });
+
+/* ================= accordion ================= */
+document.querySelectorAll('.acc-head').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const item = btn.parentElement, body = item.querySelector('.acc-body');
+    const open = item.classList.contains('open');
+    document.querySelectorAll('.acc-item.open').forEach(o => {
+      o.classList.remove('open'); o.querySelector('.acc-body').style.maxHeight = '0';
+      o.querySelector('.acc-head').setAttribute('aria-expanded','false');
+    });
+    if (!open){
+      item.classList.add('open'); body.style.maxHeight = body.scrollHeight + 'px';
+      btn.setAttribute('aria-expanded','true');
+    }
+  });
+});
+
+/* ================= quiz ================= */
+const QUIZ = [
+  { q: 'Без VPN кто видит, на какие сайты вы заходите (домены)?',
+    a: ['Ваш провайдер (ISP)', 'Конечный сайт', 'Никто — это скрыто всегда'], right: 0,
+    ex: 'Провайдер видит DNS-запросы (Domain Name System — система доменных имён) и SNI в TLS-handshake (Transport Layer Security — протокол шифрования) — то есть домены, даже если содержимое зашифровано HTTPS. Сайту виден только ваш IP.' },
+  { q: 'Что видит сайт, когда вы заходите через VPN?',
+    a: ['Ваш реальный IP', 'IP-адрес VPN-сервера', 'Только зашифрованный туннель'], right: 1,
+    ex: 'После распаковки туннеля запрос к сайту уходит с VPN-сервера — сайт видит его IP. Туннель заканчивается на VPN-сервере, сайт про него не знает.' },
+  { q: 'Делает ли VPN вас анонимным от самого VPN-провайдера?',
+    a: ['Да, в этом смысл VPN', 'Нет — он видит весь ваш трафик', 'Нет, если использовать HTTPS'], right: 1,
+    ex: 'VPN-сервер распаковывает туннель и отправляет запросы дальше — он видит и ваш реальный IP, и все домены, и содержимое. Доверие к VPN-провайдеру — ключевой вопрос (модуль 09).' }
+];
+const qBox = document.getElementById('quizBox');
+let answered = 0, correct = 0;
+QUIZ.forEach((item, qi) => {
+  const d = document.createElement('div'); d.className = 'q';
+  d.innerHTML = `<h3>Вопрос ${qi+1}. ${item.q}</h3>`;
+  item.a.forEach((txt, ai) => {
+    const l = document.createElement('label');
+    l.innerHTML = `<input type="radio" name="q${qi}" value="${ai}"><span>${txt}</span>`;
+    l.querySelector('input').addEventListener('change', () => {
+      if (d.classList.contains('answered')) return;
+      d.classList.add('answered');
+      const labels = [...d.querySelectorAll('label')];
+      labels[item.right].classList.add('right');
+      if (ai !== item.right) labels[ai].classList.add('wrong'); else correct++;
+      answered++;
+      const ex = document.createElement('div'); ex.className = 'expl'; ex.textContent = item.ex; d.appendChild(ex);
+      labels.forEach(x => x.querySelector('input').disabled = true);
+      document.getElementById('quizScore').textContent = answered === QUIZ.length ? `Результат: ${correct} / ${QUIZ.length}` : '';
+    });
+    d.appendChild(l);
+  });
+  qBox.appendChild(d);
+});
+
+/* ================= hero background packets ================= */
+(function heroBg(){
+  if (reduce) return;
+  const svg = document.getElementById('hero-bg');
+  svg.setAttribute('viewBox','0 0 1060 600'); svg.setAttribute('preserveAspectRatio','xMidYMid slice');
+  for (let i = 0; i < 14; i++){
+    const y = 30 + Math.random() * 540, dur = 9 + Math.random() * 14, delay = -Math.random() * dur;
+    const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x','-30'); r.setAttribute('y', y); r.setAttribute('width', 16 + Math.random()*22);
+    r.setAttribute('height','5'); r.setAttribute('rx','2.5');
+    r.setAttribute('fill', Math.random() < .3 ? 'var(--accent)' : 'var(--line)');
+    r.style.opacity = .25 + Math.random()*.4;
+    const a = document.createElementNS('http://www.w3.org/2000/svg','animate');
+    a.setAttribute('attributeName','x'); a.setAttribute('from','-40'); a.setAttribute('to','1100');
+    a.setAttribute('dur', dur + 's'); a.setAttribute('begin', delay + 's'); a.setAttribute('repeatCount','indefinite');
+    r.appendChild(a); svg.appendChild(r);
+  }
+})();
+</script>
+</body>
+</html>

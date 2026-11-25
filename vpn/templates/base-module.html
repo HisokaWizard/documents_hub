@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ru">
+<!--
+  БАЗОВЫЙ ШАБЛОН ИНТЕРАКТИВНОГО МОДУЛЯ курса VPN (documents_hub/vpn).
+  Извлечён из модулей 01–03 после утверждения дизайна и игровых механик пользователем.
+  Как пользоваться: скопируй файл в NN-slug.html, замени плейсхолдеры, добавь секции-игры
+  из набора утверждённых механик (см. комментарии GAME KITS ниже). Не подключай извне —
+  каждый модуль самодостаточен (inline CSS/JS, vanilla, file:// без сервера).
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Модуль NN · ЗАГОЛОВОК</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0E13; --surface:#111823; --surface2:#18212E; --line:#232F3F;
+  --ink:#E8EEF4; --muted:#8A97A4;
+  --accent:#35E0A1; --accent-dim:rgba(53,224,161,.14);   /* mint — VPN / tunnel */
+  --exposed:#FF7A6B; --exposed-dim:rgba(255,122,107,.13); /* coral — опасность/ошибка */
+  --packet:#58A6FF;                                      /* blue — твой пакет */
+  --radius:14px;
+  --font-head:'Unbounded',system-ui,sans-serif;
+  --font-body:'Golos Text',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:#04120C}
+
+/* progress + nav-dots */
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:100;transition:width .15s linear}
+#dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;z-index:90}
+#dots a{width:9px;height:9px;border-radius:50%;background:var(--line);display:block;transition:all .3s}
+#dots a.on{background:var(--accent);transform:scale(1.45)}
+@media(max-width:900px){#dots{display:none}}
+
+/* layout */
+main{max-width:1060px;margin:0 auto;padding:0 28px}
+section{padding:96px 0 40px;min-height:60vh}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:none}
+.kicker{font-family:var(--font-mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1{font-family:var(--font-head);font-weight:800;font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.01em}
+h2{font-family:var(--font-head);font-weight:600;font-size:clamp(22px,3.2vw,32px);line-height:1.25;margin-bottom:18px}
+h3{font-size:17px;font-weight:700}
+p.lead{color:var(--muted);font-size:19px;max-width:680px;margin-top:18px}
+p+p{margin-top:14px}
+.term{color:var(--accent);font-weight:600}
+code,.mono{font-family:var(--font-mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:#BFD4E6}
+
+/* hero */
+#hero{min-height:92vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+#hero-bg{position:absolute;inset:0;pointer-events:none;opacity:.5}
+.hero-badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;margin-bottom:26px;width:max-content}
+.hero-badge b{color:var(--accent);font-weight:600}
+.scroll-hint{margin-top:56px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:10px}
+.scroll-hint .arrow{display:inline-block;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+.hero-games{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.hero-games span{font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--surface)}
+
+/* SVG-сцены */
+.scene-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:26px;position:relative}
+.scene-svg{width:100%;height:auto;display:block}
+.node-g{cursor:pointer}
+.node-g .node-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .3s,fill .3s,opacity .5s}
+.node-g:hover .node-box,.node-g.sel .node-box{stroke:var(--accent)}
+.node-g.sel .node-box{fill:#16211C}
+.node-label{font-family:var(--font-body);font-size:14px;font-weight:600;fill:var(--ink);text-anchor:middle}
+.node-sub{font-family:var(--font-mono);font-size:10px;fill:var(--muted);text-anchor:middle}
+.wire{stroke:var(--line);stroke-width:2;fill:none}
+.wire-hot{stroke:var(--accent);stroke-width:2;fill:none;stroke-dasharray:7 7;opacity:0;transition:opacity .6s}
+.wire-hot.on{opacity:1;animation:dash 1.2s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-28}}
+.row2{opacity:.28;transition:opacity .6s}
+.row2.on{opacity:1}
+.pkt-lbl{font-family:var(--font-mono);font-size:9.5px;fill:#ADCBFF;text-anchor:middle}
+/* доступность: без системного кольца на клик, стильное — с клавиатуры */
+.cable-g:focus,.node-g:focus{outline:none}
+.cable-g:focus-visible .out-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+.node-g:focus-visible .node-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+
+/* кнопки */
+.btn{display:inline-flex;align-items:center;gap:9px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:11px;padding:11px 20px;font-family:var(--font-body);font-size:15px;font-weight:600;cursor:pointer;transition:transform .25s,box-shadow .25s,opacity .25s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 0 20px rgba(53,224,161,.22)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.btn.ghost{background:none;border-color:var(--line);color:var(--muted)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
+
+/* реплики персонажей (speech strip) */
+.speech{display:flex;gap:13px;align-items:flex-start;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:13px 17px;margin-top:16px;font-size:15px;min-height:56px;line-height:1.5}
+.speech .ava{font-size:22px;line-height:1.2;flex:0 0 auto}
+.speech .who{font-family:var(--font-mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:2px}
+.speech .say{color:var(--ink)}
+.speech.pop{animation:pop .35s ease}
+@keyframes pop{0%{transform:scale(.97);opacity:.4}100%{transform:scale(1);opacity:1}}
+.speech.bad .who{color:var(--exposed)}
+
+/* карточки-подсказки к кликабельным узлам */
+.info-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px}
+@media(max-width:980px){.info-cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.info-cards{grid-template-columns:1fr}}
+.icard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;min-height:110px;transition:border-color .35s,background .35s}
+.icard h3{font-size:14px;display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.icard p{font-size:13.5px;color:var(--muted)}
+.icard.flash{animation:flash .55s ease}
+@keyframes flash{0%{background:var(--accent-dim)}100%{background:var(--surface)}}
+
+/* тумблер состояния (VPN вкл/выкл, split tunneling…) */
+.toggle-row{display:flex;align-items:center;gap:16px;margin-top:18px;flex-wrap:wrap}
+.switch{position:relative;width:64px;height:34px;flex:0 0 auto}
+.switch input{opacity:0;width:100%;height:100%;position:absolute;cursor:pointer;z-index:2;margin:0}
+.slider{position:absolute;inset:0;background:var(--surface2);border:1px solid var(--line);border-radius:999px;transition:.35s}
+.slider::before{content:'';position:absolute;width:24px;height:24px;left:4px;top:4px;border-radius:50%;background:var(--muted);transition:.35s}
+.switch input:checked+.slider{background:var(--accent-dim);border-color:var(--accent)}
+.switch input:checked+.slider::before{transform:translateX(30px);background:var(--accent)}
+.switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:3px}
+.toggle-label{font-family:var(--font-mono);font-size:14px;color:var(--muted);transition:color .3s}
+.toggle-label.on{color:var(--accent)}
+
+/* таблицы-шпаргалки (routing table и т.п.) */
+.rt{background:var(--surface2);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:16px}
+.rt-title{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 18px;border-bottom:1px solid var(--line);background:var(--surface)}
+.rt-row{display:grid;grid-template-columns:minmax(140px,.8fr) 2fr;gap:12px;padding:10px 18px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border-bottom:1px solid var(--line)}
+.rt-row:last-child{border-bottom:none}
+.rt-row .dst{color:var(--ink)}
+.rt-row.hl{color:var(--accent)}
+.rt-row.hl .dst{color:var(--accent)}
+.rt-row.new{animation:pop .45s ease}
+
+/* конструктор (слоты + чипы + обманка) */
+.builder{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:860px){.slots{grid-template-columns:1fr 1fr}}
+.slot{border:2px dashed var(--line);border-radius:12px;padding:16px 12px;min-height:110px;display:flex;flex-direction:column;gap:8px;transition:border-color .3s,background .3s}
+.slot .hint{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.slot .filled{font-size:13.5px;color:var(--ink);font-family:var(--font-mono);background:var(--surface2);border-radius:8px;padding:8px 10px;word-break:break-all}
+.slot.done{border-color:var(--accent);border-style:solid;background:var(--accent-dim)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{font-family:var(--font-mono);font-size:13.5px;background:var(--surface2);color:#BFD4E6;border:1.5px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;transition:border-color .25s,transform .2s,opacity .25s}
+.chip:hover{border-color:var(--accent);transform:translateY(-2px)}
+.chip:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.chip.shake{animation:shake .45s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.builder-done{display:none;margin-top:20px;border-top:1px dashed var(--line);padding-top:18px;font-size:14.5px;color:var(--muted)}
+.builder-done.show{display:block}
+.builder-done b{color:var(--ink)}
+.mini-track{position:relative;height:52px;margin-top:16px;border-bottom:2px solid var(--line);overflow:hidden}
+.mini-pkt{position:absolute;left:-40px;top:12px;width:34px;height:22px;border-radius:6px;background:var(--packet);opacity:0}
+.mini-pkt.go{opacity:1;animation:run 1.6s ease-in forwards}
+@keyframes run{0%{left:-40px}100%{left:105%}}
+
+/* игра-диспетчер (выбор из 2–3 «дверей») */
+.cable-g{cursor:pointer}
+.cable-hit{stroke:transparent;stroke-width:30;fill:none}
+.cable{stroke:var(--line);stroke-width:2.5;fill:none;transition:stroke .25s}
+.cable-g:hover .cable,.cable-g.ok .cable{stroke:var(--accent)}
+.cable-g.err .cable{stroke:var(--exposed)}
+.cable-g.err{animation:shake .45s ease}
+.out-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .25s}
+.cable-g:hover .out-box{stroke:var(--accent)}
+.score{font-family:var(--font-mono);font-size:14px;color:var(--accent)}
+
+/* заметки-выводы */
+.note{background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 18px;margin-top:20px;font-size:14.5px;color:var(--muted)}
+.note b{color:var(--ink)}
+.note.warn{border-left-color:var(--exposed)}
+
+/* квиз */
+.quiz{margin-top:28px;display:flex;flex-direction:column;gap:20px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.q h3{font-size:16.5px;margin-bottom:16px;font-weight:600}
+.q label{display:flex;gap:12px;align-items:flex-start;padding:11px 14px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;cursor:pointer;font-size:15px;transition:border-color .25s,background .25s}
+.q label:hover{border-color:var(--muted)}
+.q input{accent-color:var(--accent);margin-top:4px;flex:0 0 auto}
+.q label.right{border-color:var(--accent);background:var(--accent-dim)}
+.q label.wrong{border-color:var(--exposed);background:var(--exposed-dim)}
+.q .expl{display:none;font-size:14px;color:var(--muted);margin-top:10px;padding-top:12px;border-top:1px dashed var(--line)}
+.q.answered .expl{display:block}
+.quiz-score{font-family:var(--font-mono);color:var(--accent);font-size:15px;margin-top:6px;min-height:24px}
+
+/* футер */
+footer{border-top:1px solid var(--line);margin-top:80px;padding:44px 0 70px}
+.next-link{display:inline-flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius);padding:16px 26px;font-weight:600;text-decoration:none;transition:transform .3s,box-shadow .3s}
+.next-link:hover{transform:translateX(6px);box-shadow:0 0 26px rgba(53,224,161,.25)}
+.sources{margin-top:34px}
+.sources h3{font-size:15px;margin-bottom:10px;color:var(--muted);font-weight:600}
+.sources li{font-size:14px;color:var(--muted);margin-left:20px;padding:2px 0}
+.sources a{color:#ADCBFF}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
+  html{scroll-behavior:auto}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<nav id="dots" aria-label="Навигация по секциям">
+  <!-- по <a href="#id" data-s="id"> на каждую секцию -->
+  <a href="#hero" data-s="hero"></a>
+</nav>
+
+<main>
+
+<section id="hero">
+  <svg id="hero-bg" aria-hidden="true"></svg>
+  <div class="hero-badge">Курс «VPN: как это работает» · <b>Модуль NN</b> / 10</div>
+  <h1>ЗАГОЛОВОК<br>МОДУЛЯ</h1>
+  <p class="lead">ЛИД: одна фраза о главной мысли модуля, «как для десятилетки».</p>
+  <div class="hero-games">
+    <span>🎮 игра 1</span><span>🎮 игра 2</span>
+  </div>
+  <div class="scroll-hint"><span class="arrow">↓</span> Листай</div>
+</section>
+
+<!-- СЕКЦИИ-ИГРЫ: копируй разметку из модулей 02/03 (scene-wrap + speech + btn-row + info-cards).
+     GAME KITS (утверждены пользователем):
+     A. «Путь с репликами» — SVG-сцена, movePkt по waypoints, speak() на каждом узле,
+        кликабельные node-g → info-cards; опционально тумблер состояний (wire-hot/row2).
+        ОБЯЗАТЕЛЬНО степ-навигация (паттерн утверждён пользователем): кнопка «Авто» +
+        «‹ Назад» / «Шаг ›» + счётчик «шаг i из N». Состояние: idx(-1=старт), busy, running,
+        autoCancel; клик стрелки во время авто → autoCancel=true, дождаться running=false,
+        затем goto(idx±1). goto(): movePkt(..., cancelFn=()=>autoCancel) → cur/idx → applyStep(i)
+        (speak + флаги шага: shell/dnsWire… + counter + disabled кнопок). resetToStart():
+        пакет на START, intro-реплика, counter «шаг 0 из N». Смена тумблера → отмена авто + resetToStart.
+        ГРАБЛИ: (1) НЕ дизейблить стрелки во время goto — клик в момент анимации проглотится;
+        очередность разруливает while(busy||running) внутри arrow(); (2) паузу авто дробить на
+        кусочки по 60мс с проверкой autoCancel, иначе отмена ждёт до 2с; (3) на шаге 0 кнопка
+        «‹ Назад» дизейблится legitimately — не путать с багом при тестировании.
+        Референс-реализация: game 1 в 02-…html (city) и 03-…html (hijack).
+     B. «Конструктор с обманкой» — slots + chips (одна чипа-обманка с шуткой), builder-done + вложенная
+        визуализация результата + mini-track отправка.
+     C. «Диспетчер» — раунды: пакет с адресом + 2–3 варианта-«двери» (cable-g), шпаргалка .rt,
+        события между раундами меняют таблицу, счёт, подсказки при ошибке.
+        ОБЯЗАТЕЛЬНО (фидбек пользователя, модуль 03): шпаргалка .rt — НАД сценой (видна во время
+        игры); перед игрой — объясняющий блок «как решает диспетчер» (прочитать адрес → найти в
+        таблице самую точную строку → нести в её дверь; самая точная строка побеждает); события
+        БЕЗ автотаймера — пауза и кнопка «Понятно, продолжить ▶» (Promise waitContinue); пауза
+        между раундами ≥2.2с; реплика раунда прямо говорит «таймера нет, кликай дверь, когда готов».
+     D. «Штамп/сборка» — анимация изменения пакета на узле (штамп NAT, замок TLS) + растущая таблица.
+     E. Мини-квиз в конце (движок ниже). -->
+
+<section id="quiz" class="reveal">
+  <div class="kicker">Проверка</div>
+  <h2>Мини-квиз</h2>
+  <div class="quiz" id="quizBox"></div>
+  <div class="quiz-score" id="quizScore"></div>
+</section>
+
+<footer>
+  <a class="next-link" href="./NN+1-slug.html">Дальше: ТЕМА <span>→</span></a>
+  <div class="sources">
+    <h3>Источники</h3>
+    <ul><li>ИСТОЧНИК: <a href="URL">ссылка</a></li></ul>
+  </div>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:30px;font-family:var(--font-mono)">documents_hub / vpn · модуль NN · статус: draft</p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, RM ? Math.min(ms, 300) : ms));
+
+/* reveal + progress + dots */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+const sections = [...document.querySelectorAll('section')];
+const dots = [...document.querySelectorAll('#dots a')];
+function onScroll(){
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  let cur = sections[0].id;
+  for (const s of sections){ if (s.getBoundingClientRect().top < innerHeight * 0.4) cur = s.id; }
+  dots.forEach(d => d.classList.toggle('on', d.dataset.s === cur));
+}
+addEventListener('scroll', onScroll, { passive:true }); onScroll();
+
+/* реплика персонажа в speech-strip */
+function speak(strip, ava, who, text, bad){
+  strip.className = 'speech pop' + (bad ? ' bad' : '');
+  strip.innerHTML = '';
+  const a = document.createElement('span'); a.className = 'ava'; a.textContent = ava;
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
+  const s = document.createElement('span'); s.className = 'say'; s.textContent = text;
+  const wrap = document.createElement('span'); wrap.appendChild(w); wrap.appendChild(s);
+  strip.appendChild(a); strip.appendChild(wrap);
+}
+
+/* линейное перемещение пакета-агента между точками SVG; cancelFn — отмена анимации (степ-режим) */
+function movePkt(g, from, to, dur, cancelFn){
+  return new Promise(res => {
+    const t0 = performance.now();
+    if (RM){ g.setAttribute('transform', `translate(${to[0]},${to[1]})`); res(); return; }
+    function step(now){
+      if (cancelFn && cancelFn()){ res(); return; }
+      const k = Math.min((now - t0) / dur, 1);
+      const x = from[0] + (to[0] - from[0]) * k;
+      const y = from[1] + (to[1] - from[1]) * k;
+      g.setAttribute('transform', `translate(${x},${y})`);
+      if (k < 1) requestAnimationFrame(step); else res();
+    }
+    requestAnimationFrame(step);
+  });
+}
+/* ПРАВИЛА СЦЕН: пакет-агент ведём ВЫШЕ провода (y = wire_y − 28), иначе покоящийся пакет
+   закрывает подпись узла; после прибытия к «двери» прячем (opacity 0). */
+
+/* движок мини-квиза */
+function buildQuiz(QUIZ){
+  const qBox = document.getElementById('quizBox');
+  let answered = 0, correct = 0;
+  QUIZ.forEach((item, qi) => {
+    const d = document.createElement('div'); d.className = 'q reveal';
+    const h = document.createElement('h3'); h.textContent = `Вопрос ${qi+1}. ${item.q}`;
+    d.appendChild(h);
+    item.a.forEach((txt, ai) => {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="radio" name="q${qi}" value="${ai}"><span>${txt}</span>`;
+      l.querySelector('input').addEventListener('change', () => {
+        if (d.classList.contains('answered')) return;
+        d.classList.add('answered');
+        const labels = [...d.querySelectorAll('label')];
+        labels[item.right].classList.add('right');
+        if (ai !== item.right) labels[ai].classList.add('wrong'); else correct++;
+        answered++;
+        const ex = document.createElement('div'); ex.className = 'expl'; ex.textContent = item.ex; d.appendChild(ex);
+        labels.forEach(x => x.querySelector('input').disabled = true);
+        document.getElementById('quizScore').textContent = answered === QUIZ.length ? `Результат: ${correct} / ${QUIZ.length}` : '';
+      });
+      d.appendChild(l);
+    });
+    qBox.appendChild(d);
+    io.observe(d);
+  });
+}
+/* buildQuiz([{ q:'…', a:['…','…','…'], right:0, ex:'…' }, …]); */
+
+/* фон hero: летящие пакеты */
+(function heroBg(){
+  if (RM) return;
+  const svg = document.getElementById('hero-bg');
+  svg.setAttribute('viewBox','0 0 1060 600'); svg.setAttribute('preserveAspectRatio','xMidYMid slice');
+  for (let i = 0; i < 14; i++){
+    const y = 30 + Math.random() * 540, dur = 9 + Math.random() * 14, delay = -Math.random() * dur;
+    const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x','-30'); r.setAttribute('y', y); r.setAttribute('width', 16 + Math.random()*22);
+    r.setAttribute('height','5'); r.setAttribute('rx','2.5');
+    r.setAttribute('fill', Math.random() < .3 ? 'var(--accent)' : 'var(--line)');
+    r.style.opacity = .25 + Math.random()*.4;
+    const a = document.createElementNS('http://www.w3.org/2000/svg','animate');
+    a.setAttribute('attributeName','x'); a.setAttribute('from','-40'); a.setAttribute('to','1100');
+    a.setAttribute('dur', dur + 's'); a.setAttribute('begin', delay + 's'); a.setAttribute('repeatCount','indefinite');
+    r.appendChild(a); svg.appendChild(r);
+  }
+})();
+</script>
+</body>
+</html>

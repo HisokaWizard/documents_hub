@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Модуль 07 · Архитектуры VPN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0A0E13;--surface:#111823;--surface2:#18212E;--line:#232F3F;--ink:#E8EEF4;--muted:#8A97A4;--accent:#35E0A1;--accent-dim:rgba(53,224,161,.14);--exposed:#FF7A6B;--exposed-dim:rgba(255,122,107,.13);--packet:#58A6FF;--radius:14px;--font-head:'Unbounded',system-ui,sans-serif;--font-body:'Golos Text',system-ui,sans-serif;--font-mono:'JetBrains Mono',ui-monospace,monospace}
+*{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:#04120C}
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:100;transition:width .15s linear}
+#dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;z-index:90}
+#dots a{width:9px;height:9px;border-radius:50%;background:var(--line);display:block;transition:all .3s}
+#dots a.on{background:var(--accent);transform:scale(1.45)}
+@media(max-width:900px){#dots{display:none}}
+main{max-width:1060px;margin:0 auto;padding:0 28px}
+section{padding:96px 0 40px;min-height:60vh}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:none}
+.kicker{font-family:var(--font-mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1{font-family:var(--font-head);font-weight:800;font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.01em}
+h2{font-family:var(--font-head);font-weight:600;font-size:clamp(22px,3.2vw,32px);line-height:1.25;margin-bottom:18px}
+h3{font-size:17px;font-weight:700}
+p.lead{color:var(--muted);font-size:19px;max-width:680px;margin-top:18px}
+p+p{margin-top:14px}
+.term{color:var(--accent);font-weight:600}
+code,.mono{font-family:var(--font-mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:#BFD4E6}
+#hero{min-height:92vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+#hero-bg{position:absolute;inset:0;pointer-events:none;opacity:.5}
+.hero-badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:13px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;margin-bottom:26px;width:max-content}
+.hero-badge b{color:var(--accent);font-weight:600}
+.scroll-hint{margin-top:56px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:10px}
+.scroll-hint .arrow{display:inline-block;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+.hero-games{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.hero-games span{font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--surface)}
+.scene-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:26px;position:relative}
+.scene-svg{width:100%;height:auto;display:block}
+.node-g{cursor:pointer}.node-g .node-box{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;transition:stroke .3s,fill .3s}
+.node-g:hover .node-box,.node-g.sel .node-box{stroke:var(--accent)}.node-g.sel .node-box{fill:#16211C}
+.node-label{font-family:var(--font-body);font-size:14px;font-weight:600;fill:var(--ink);text-anchor:middle}
+.node-sub{font-family:var(--font-mono);font-size:10px;fill:var(--muted);text-anchor:middle}
+.wire{stroke:var(--line);stroke-width:2;fill:none}.wire-hot{stroke:var(--accent);stroke-width:2;fill:none;stroke-dasharray:7 7;opacity:0;transition:opacity .6s}
+.wire-hot.on{opacity:1;animation:dash 1.2s linear infinite}@keyframes dash{to{stroke-dashoffset:-28}}
+.pkt-lbl{font-family:var(--font-mono);font-size:9.5px;fill:#ADCBFF;text-anchor:middle}
+.node-g:focus{outline:none}.node-g:focus-visible .node-box{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 9px rgba(53,224,161,.35))}
+.btn{display:inline-flex;align-items:center;gap:9px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:11px;padding:11px 20px;font-family:var(--font-body);font-size:15px;font-weight:600;cursor:pointer;transition:transform .25s,box-shadow .25s,opacity .25s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 0 20px rgba(53,224,161,.22)}
+.btn:disabled{opacity:.38;cursor:not-allowed}.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.btn.ghost{background:none;border-color:var(--line);color:var(--muted)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
+.score{font-family:var(--font-mono);font-size:14px;color:var(--accent)}
+.speech{display:flex;gap:13px;align-items:flex-start;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:13px 17px;margin-top:16px;font-size:15px;min-height:56px;line-height:1.5}
+.speech .ava{font-size:22px;line-height:1.2;flex:0 0 auto}
+.speech .who{font-family:var(--font-mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:2px}
+.speech .say{color:var(--ink)}.speech.pop{animation:pop .35s ease}
+@keyframes pop{0%{transform:scale(.97);opacity:.4}100%{transform:scale(1);opacity:1}}
+.speech.bad .who{color:var(--exposed)}
+.info-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px}
+.info-cards.three{grid-template-columns:repeat(3,1fr)}
+@media(max-width:980px){.info-cards,.info-cards.three{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.info-cards,.info-cards.three{grid-template-columns:1fr}}
+.icard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;min-height:110px;transition:border-color .35s,background .35s}
+.icard h3{font-size:14px;display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.icard p{font-size:13.5px;color:var(--muted)}
+.icard.sel{border-color:var(--accent);background:#16211C}.icard.flash{animation:flash .55s ease}
+@keyframes flash{0%{background:var(--accent-dim)}100%{background:var(--surface)}}
+.toggle-row{display:flex;align-items:center;gap:16px;margin-top:18px;flex-wrap:wrap}
+.switch{position:relative;width:64px;height:34px;flex:0 0 auto}
+.switch input{opacity:0;width:100%;height:100%;position:absolute;cursor:pointer;z-index:2;margin:0}
+.slider{position:absolute;inset:0;background:var(--surface2);border:1px solid var(--line);border-radius:999px;transition:.35s}
+.slider::before{content:'';position:absolute;width:24px;height:24px;left:4px;top:4px;border-radius:50%;background:var(--muted);transition:.35s}
+.switch input:checked+.slider{background:var(--accent-dim);border-color:var(--accent)}
+.switch input:checked+.slider::before{transform:translateX(30px);background:var(--accent)}
+.switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:3px}
+.toggle-label{font-family:var(--font-mono);font-size:14px;color:var(--muted);transition:color .3s}
+.toggle-label.on{color:var(--accent)}
+.builder{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:860px){.slots{grid-template-columns:1fr}}
+.slot{border:2px dashed var(--line);border-radius:12px;padding:16px 12px;min-height:110px;display:flex;flex-direction:column;gap:8px;transition:border-color .3s,background .3s}
+.slot .hint{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.slot .filled{font-size:13.5px;color:var(--ink);font-family:var(--font-mono);background:var(--surface2);border-radius:8px;padding:8px 10px;word-break:break-all}
+.slot.done{border-color:var(--accent);border-style:solid;background:var(--accent-dim)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{font-family:var(--font-mono);font-size:13.5px;background:var(--surface2);color:#BFD4E6;border:1.5px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;transition:border-color .25s,transform .2s,opacity .25s}
+.chip:hover{border-color:var(--accent);transform:translateY(-2px)}
+.chip:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.chip.shake{animation:shake .45s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.builder-done{display:none;margin-top:20px;border-top:1px dashed var(--line);padding-top:18px;font-size:14.5px;color:var(--muted)}
+.builder-done.show{display:block}.builder-done b{color:var(--ink)}
+.mini-track{position:relative;height:52px;margin-top:16px;border-bottom:2px solid var(--line);overflow:hidden}
+.mini-pkt{position:absolute;left:-40px;top:12px;width:34px;height:22px;border-radius:6px;background:var(--packet);opacity:0}
+.mini-pkt.go{opacity:1;animation:run 1.6s ease-in forwards}
+@keyframes run{0%{left:-40px}100%{left:105%}}
+.note{background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 18px;margin-top:20px;font-size:14.5px;color:var(--muted)}
+.note b{color:var(--ink)}.note.warn{border-left-color:var(--exposed)}
+.quiz{margin-top:28px;display:flex;flex-direction:column;gap:20px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.q h3{font-size:16.5px;margin-bottom:16px;font-weight:600}
+.q label{display:flex;gap:12px;align-items:flex-start;padding:11px 14px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;cursor:pointer;font-size:15px;transition:border-color .25s,background .25s}
+.q label:hover{border-color:var(--muted)}
+.q input{accent-color:var(--accent);margin-top:4px;flex:0 0 auto}
+.q label.right{border-color:var(--accent);background:var(--accent-dim)}
+.q label.wrong{border-color:var(--exposed);background:var(--exposed-dim)}
+.q .expl{display:none;font-size:14px;color:var(--muted);margin-top:10px;padding-top:12px;border-top:1px dashed var(--line)}
+.q.answered .expl{display:block}
+.quiz-score{font-family:var(--font-mono);color:var(--accent);font-size:15px;margin-top:6px;min-height:24px}
+footer{border-top:1px solid var(--line);margin-top:80px;padding:44px 0 70px}
+.next-link{display:inline-flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius);padding:16px 26px;font-weight:600;text-decoration:none;transition:transform .3s,box-shadow .3s}
+.next-link:hover{transform:translateX(6px);box-shadow:0 0 26px rgba(53,224,161,.25)}
+.sources{margin-top:34px}.sources h3{font-size:15px;margin-bottom:10px;color:var(--muted);font-weight:600}
+.sources li{font-size:14px;color:var(--muted);margin-left:20px;padding:2px 0}.sources a{color:#ADCBFF}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}html{scroll-behavior:auto}.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<nav id="dots" aria-label="Навигация по секциям">
+  <a href="#hero" data-s="hero"></a><a href="#arch" data-s="arch"></a><a href="#split" data-s="split"></a><a href="#topo" data-s="topo"></a><a href="#quiz" data-s="quiz"></a>
+</nav>
+<main>
+
+<section id="hero">
+  <svg id="hero-bg" aria-hidden="true"></svg>
+  <div class="hero-badge">Курс «VPN: как это работает» · <b>Модуль 07</b> / 10</div>
+  <h1>Архитектуры VPN:<br>кто с кем соединён</h1>
+  <p class="lead">Один протокол — три формы. Клиент-сервер для приватности, site-to-site для офисов, mesh для распределённых команд. Разбираем, как трафик течёт в каждой архитектуре и что выбирать под свою задачу.</p>
+  <div class="hero-games"><span>🏗 три архитектуры</span><span>🔀 full vs split tunnel</span><span>🧩 конструктор топологии</span></div>
+  <div class="scroll-hint"><span class="arrow">↓</span> Листай — выбирай архитектуру</div>
+</section>
+
+<!-- ============ ARCHITECTURES ============ -->
+<section id="arch" class="reveal">
+  <div class="kicker">Игра 1 · Три архитектуры</div>
+  <h2>Как устроена сеть?</h2>
+  <p>Переключи архитектуру наверху и пройди путь пакета по шагам: «Авто» или стрелки «‹ Назад» / «Шаг ›». Каждая архитектура — своя топология, свои плюсы и минусы. Кликай по узлам — ниже открываются карточки.</p>
+
+  <div class="btn-row" id="archRow" role="group" aria-label="Выбор архитектуры">
+    <button class="btn ghost" data-arch="cs">🖥 Клиент-сервер</button>
+    <button class="btn ghost" data-arch="s2s">🏢 Site-to-site</button>
+    <button class="btn ghost" data-arch="mesh">🕸 Mesh</button>
+  </div>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 340" role="img" aria-label="Топология выбранной архитектуры">
+      <!-- провода (переключаются JS) -->
+      <path id="w1" class="wire" d="" style="opacity:0"/><path id="w2" class="wire" d="" style="opacity:0"/>
+      <path id="w3" class="wire" d="" style="opacity:0"/><path id="w4" class="wire" d="" style="opacity:0"/>
+      <path id="wh" class="wire-hot" d="" style="opacity:0"/>
+      <!-- узлы (позиции меняются JS) -->
+      <g id="nA" class="node-g" tabindex="0" role="button" aria-label="Узел A" style="opacity:0">
+        <rect class="node-box" x="0" y="0" width="140" height="88" rx="12"/>
+        <text class="node-label" x="70" y="38" id="nAL"></text>
+        <text class="node-sub" x="70" y="58" id="nAS"></text>
+        <text class="node-sub" x="70" y="72" id="nAS2"></text>
+      </g>
+      <g id="nB" class="node-g" tabindex="0" role="button" aria-label="Узел B" style="opacity:0">
+        <rect class="node-box" x="0" y="0" width="140" height="88" rx="12"/>
+        <text class="node-label" x="70" y="38" id="nBL"></text>
+        <text class="node-sub" x="70" y="58" id="nBS"></text>
+        <text class="node-sub" x="70" y="72" id="nBS2"></text>
+      </g>
+      <g id="nC" class="node-g" tabindex="0" role="button" aria-label="Узел C" style="opacity:0">
+        <rect class="node-box" x="0" y="0" width="140" height="88" rx="12"/>
+        <text class="node-label" x="70" y="38" id="nCL"></text>
+        <text class="node-sub" x="70" y="58" id="nCS"></text>
+        <text class="node-sub" x="70" y="72" id="nCS2"></text>
+      </g>
+      <g id="nD" class="node-g" tabindex="0" role="button" aria-label="Узел D" style="opacity:0">
+        <rect class="node-box" x="0" y="0" width="140" height="88" rx="12"/>
+        <text class="node-label" x="70" y="38" id="nDL"></text>
+        <text class="node-sub" x="70" y="58" id="nDS"></text>
+        <text class="node-sub" x="70" y="72" id="nDS2"></text>
+      </g>
+      <!-- пакет -->
+      <g id="archPkt" transform="translate(100,122)" style="opacity:0">
+        <rect id="archShell" x="-26" y="-17" width="52" height="34" rx="9" fill="rgba(53,224,161,.15)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 4" style="opacity:0"/>
+        <rect x="-15" y="-11" width="30" height="22" rx="6" fill="var(--packet)"/>
+        <text id="archLock" x="0" y="4.5" text-anchor="middle" font-size="11" fill="#04120C" style="opacity:0">🔒</text>
+        <text class="pkt-lbl" id="archLbl" x="0" y="-24"></text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="archGo">🏗 Авто</button>
+    <button class="btn ghost" id="archPrev" disabled>‹ Назад</button>
+    <button class="btn ghost" id="archNext">Шаг ›</button>
+    <span class="score" id="archStep"></span>
+  </div>
+  <div class="speech" id="archSpeech">
+    <span class="ava">🏗</span>
+    <span><span class="who">Сетевой архитектор</span><span class="say">Выбери архитектуру наверху — и посмотрим, как пакет добирается от отправителя к получателю.</span></span>
+  </div>
+
+  <div class="info-cards" id="archCards">
+    <div class="icard" data-for="a" id="cardA"><h3 id="cardAT">Узел A</h3><p id="cardAP"></p></div>
+    <div class="icard" data-for="b" id="cardB"><h3 id="cardBT">Узел B</h3><p id="cardBP"></p></div>
+    <div class="icard" data-for="c" id="cardC"><h3 id="cardCT">Узел C</h3><p id="cardCP"></p></div>
+    <div class="icard" data-for="d" id="cardD"><h3 id="cardDT">Узел D</h3><p id="cardDP"></p></div>
+  </div>
+
+  <div class="note"><b>Главный выбор:</b> клиент-сервер прост и централизован, но сервер — единая точка отказа и доверия. Site-to-site прозрачен для пользователей, но требует оборудования на обоих концах. Mesh даёт прямые P2P-соединения и авто-роуминг, но зависит от NAT traversal.</div>
+</section>
+
+<!-- ============ SPLIT TUNNEL ============ -->
+<section id="split" class="reveal">
+  <div class="kicker">Игра 2 · Full vs Split Tunnel</div>
+  <h2>Весь трафик в туннель или только часть?</h2>
+  <p>Переключи тумблер и посмотри, куда несёт диспетчер пакеты разных приложений. В режиме <b>full tunnel</b> всё идёт через VPN. В режиме <b>split tunnel</b> — только выбранный трафик, остальное напрямую.</p>
+
+  <div class="toggle-row">
+    <label class="switch"><input type="checkbox" id="splitToggle"><span class="slider"></span></label>
+    <span class="toggle-label" id="splitLabel">Full tunnel — весь трафик через VPN</span>
+  </div>
+
+  <div class="scene-wrap">
+    <svg class="scene-svg" viewBox="0 0 960 300" role="img" aria-label="Full vs split tunnel">
+      <path class="wire" d="M 100 150 H 350"/>
+      <path id="splitWireTun" class="wire-hot on" d="M 350 100 C 450 100 450 100 550 100"/>
+      <path id="splitWireDir" class="wire" d="M 350 200 C 450 200 450 200 550 200" style="opacity:.3"/>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="30" y="106" width="140" height="88" rx="12"/>
+        <text class="node-label" x="100" y="140">Приложения 📱</text>
+        <text class="node-sub" x="100" y="160">браузер, банк,</text>
+        <text class="node-sub" x="100" y="174">принтер, YouTube</text>
+      </g>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="350" y="106" width="140" height="88" rx="12" style="stroke:var(--accent)"/>
+        <text class="node-label" x="420" y="140" style="fill:var(--accent)">Диспетчер 🚦</text>
+        <text class="node-sub" x="420" y="160">таблица маршрутов</text>
+        <text class="node-sub" x="420" y="174">куда нести пакет?</text>
+      </g>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="550" y="56" width="160" height="88" rx="12" style="stroke:var(--accent)"/>
+        <text class="node-label" x="630" y="90" style="fill:var(--accent)">VPN-туннель 🔒</text>
+        <text class="node-sub" x="630" y="110">tun0 → сервер</text>
+        <text class="node-sub" x="630" y="124">провайдер видит шум</text>
+      </g>
+      <g class="node-g" style="cursor:default">
+        <rect class="node-box" x="550" y="156" width="160" height="88" rx="12"/>
+        <text class="node-label" x="630" y="190">Напрямую 🌐</text>
+        <text class="node-sub" x="630" y="210">eth0 → провайдер</text>
+        <text class="node-sub" x="630" y="224">провайдер видит ВСЁ</text>
+      </g>
+      <g id="splitPkt" transform="translate(100,122)" style="opacity:0">
+        <rect id="splitShell" x="-26" y="-17" width="52" height="34" rx="9" fill="rgba(53,224,161,.15)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 4" style="opacity:0"/>
+        <rect x="-15" y="-11" width="30" height="22" rx="6" fill="var(--packet)"/>
+        <text id="splitLock" x="0" y="4.5" text-anchor="middle" font-size="11" fill="#04120C" style="opacity:0">🔒</text>
+        <text class="pkt-lbl" id="splitLbl" x="0" y="-24"></text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="splitSend">📦 Отправить пакеты</button>
+    <span class="score" id="splitInfo"></span>
+  </div>
+  <div class="speech" id="splitSpeech">
+    <span class="ava">🚦</span>
+    <span><span class="who">Диспетчер</span><span class="say">Переключи тумблер и жми «Отправить пакеты». Посмотри, какие приложения идут в туннель, а какие — напрямую.</span></span>
+  </div>
+
+  <div class="note warn"><b>Split tunnel — компромисс:</b> локальные ресурсы (принтеры, NAS) доступны напрямую, банковские приложения не ругаются. Но трафик вне туннеля провайдер видит полностью, а DNS-запросы могут утечь мимо VPN (модуль [[09-utechki-i-ogranicheniya]]).</div>
+</section>
+
+<!-- ============ TOPOLOGY BUILDER ============ -->
+<section id="topo" class="reveal">
+  <div class="kicker">Игра 3 · Конструктор</div>
+  <h2>Собери топологию сети</h2>
+  <p>Тебе дали задачу: какую архитектуру выбрать? Кликай по деталям в нужные слоты. Одна деталь тут из другой задачи — найдёшь её?</p>
+
+  <div class="builder">
+    <div class="slots">
+      <div class="slot" data-slot="task"><span class="hint">1 · Задача</span></div>
+      <div class="slot" data-slot="arch"><span class="hint">2 · Архитектура</span></div>
+      <div class="slot" data-slot="proto"><span class="hint">3 · Протокол</span></div>
+    </div>
+    <div class="chips" id="topoChips">
+      <button class="chip" data-target="task">🏠 личный VPN для приватности</button>
+      <button class="chip" data-target="arch">🖥 клиент-сервер</button>
+      <button class="chip" data-target="proto">🚀 WireGuard</button>
+      <button class="chip" data-target="wrong">🏢 site-to-site между офисами</button>
+    </div>
+    <div class="speech" id="topoSpeech" style="margin-top:18px">
+      <span class="ava">🧩</span>
+      <span><span class="who">Архитектор</span><span class="say">Задача: личный VPN для приватности и обхода блокировок. Собери правильную комбинацию из трёх деталей.</span></span>
+    </div>
+    <div class="builder-done" id="topoDone">
+      <b>Топология собрана! 🏗</b> Классическая связка для личного VPN:
+      <div style="margin-top:14px;font-family:var(--font-mono);font-size:13px;color:#BFD4E6;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px 20px;line-height:1.8">
+        🏠 Ты (клиент) → 🚀 WireGuard-туннель → 🛡 VPS в Амстердаме → 🌐 Интернет<br>
+        <span style="color:var(--muted)">• Весь трафик через туннель (full tunnel)</span><br>
+        <span style="color:var(--muted)">• Провайдер видит только шум до 203.0.113.7</span><br>
+        <span style="color:var(--muted)">• Сайт видит IP сервера, не твой</span>
+      </div>
+      <div class="mini-track"><div class="mini-pkt" id="topoMini"></div></div>
+      <div class="btn-row">
+        <button class="btn" id="topoSend">Запустить туннель 🚀</button>
+        <button class="btn ghost" id="topoReset">Собрать заново</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="note"><b>Для других задач — другие комбинации:</b> офисы ↔ одна сеть = site-to-site + IPsec/IKEv2; распределённая команда = mesh + WireGuard (Tailscale); доступ к внутренним ресурсам без потери скорости = любая архитектура + split tunnel.</div>
+</section>
+
+<section id="quiz" class="reveal">
+  <div class="kicker">Проверка</div>
+  <h2>Мини-квиз: архитектура выбрана верно?</h2>
+  <div class="quiz" id="quizBox"></div>
+  <div class="quiz-score" id="quizScore"></div>
+</section>
+
+<footer>
+  <a class="next-link" href="./08-mitm-i-tls.html">Дальше: MITM и TLS <span>→</span></a>
+  <div class="sources">
+    <h3>Источники</h3>
+    <ul>
+      <li>RFC 8985 — The WireGuard VPN Protocol: <a href="https://datatracker.ietf.org/doc/html/rfc8985">datatracker.ietf.org/doc/html/rfc8985</a></li>
+      <li>Tailscale — How Tailscale works: <a href="https://tailscale.com/blog/how-tailscale-works/">tailscale.com/blog/how-tailscale-works</a></li>
+      <li>Headscale — Self-hosted control server: <a href="https://github.com/juanfont/headscale">github.com/juanfont/headscale</a></li>
+      <li>ZeroTier Manual: <a href="https://docs.zerotier.com/">docs.zerotier.com</a></li>
+      <li>RFC 7296 — IKEv2: <a href="https://datatracker.ietf.org/doc/html/rfc7296">datatracker.ietf.org/doc/html/rfc7296</a></li>
+      <li>Cloudflare — Split tunneling: <a href="https://www.cloudflare.com/learning/zero-trust/split-tunneling/">cloudflare.com/learning/zero-trust/split-tunneling</a></li>
+      <li>NetBird Architecture: <a href="https://docs.netbird.io/about-netbird/how-it-works">docs.netbird.io</a></li>
+    </ul>
+  </div>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:30px;font-family:var(--font-mono)">documents_hub / vpn · модуль 07 · статус: draft</p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep=ms=>new Promise(r=>setTimeout(r,RM?Math.min(ms,300):ms));
+
+/* ===== reveal/progress/dots ===== */
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target)}})},{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+const sections=[...document.querySelectorAll('section')],dots=[...document.querySelectorAll('#dots a')];
+function onScroll(){const h=document.documentElement;document.getElementById('progress').style.width=(h.scrollTop/(h.scrollHeight-h.clientHeight)*100)+'%';let cur=sections[0].id;for(const s of sections){if(s.getBoundingClientRect().top<innerHeight*.4)cur=s.id}dots.forEach(d=>d.classList.toggle('on',d.dataset.s===cur))}
+addEventListener('scroll',onScroll,{passive:true});onScroll();
+
+function speak(strip,ava,who,text,bad){strip.className='speech pop'+(bad?' bad':'');strip.innerHTML='';const a=document.createElement('span');a.className='ava';a.textContent=ava;const w=document.createElement('span');w.className='who';w.textContent=who;const s=document.createElement('span');s.className='say';s.textContent=text;const wrap=document.createElement('span');wrap.appendChild(w);wrap.appendChild(s);strip.appendChild(a);strip.appendChild(wrap)}
+function movePkt(g,from,to,dur,cancelFn){return new Promise(res=>{const t0=performance.now();if(RM){g.setAttribute('transform',`translate(${to[0]},${to[1]})`);res();return}function step(now){if(cancelFn&&cancelFn()){res();return}const k=Math.min((now-t0)/dur,1);g.setAttribute('transform',`translate(${from[0]+(to[0]-from[0])*k},${from[1]+(to[1]-from[1])*k})`);if(k<1)requestAnimationFrame(step);else res()}requestAnimationFrame(step)})}
+
+/* ===== game 1: architectures ===== */
+(function archGame(){
+  const pkt=document.getElementById('archPkt'),shell=document.getElementById('archShell'),lock=document.getElementById('archLock'),lbl=document.getElementById('archLbl');
+  const btn=document.getElementById('archGo'),prevBtn=document.getElementById('archPrev'),nextBtn=document.getElementById('archNext'),counter=document.getElementById('archStep'),strip=document.getElementById('archSpeech');
+  const intro=strip.innerHTML;
+  let running=false,autoCancel=false,busy=false,idx=-1,cur=[100,122],arch=null,steps=[];
+
+  /* позиции узлов для каждой архитектуры */
+  const LAYOUTS={
+    cs:{
+      nodes:[
+        {id:'nA',x:30,y:126,l:'Ты 🏠',s:'клиент',s2:'1.2.3.4'},
+        {id:'nB',x:410,y:126,l:'VPN-сервер 🛡',s:'точка выхода',s2:'203.0.113.7'},
+        {id:'nC',x:790,y:126,l:'Интернет 🌐',s:'сайты, сервисы',s2:''},
+        {id:'nD',x:0,y:0,l:'',s:'',s2:'',hide:true}
+      ],
+      wires:[{id:'w1',d:'M 170 170 H 410'},{id:'w2',d:'M 550 170 H 790'}],
+      hotWire:null,
+      cards:{a:['🏠 Ты (клиент)','Твой VPN-клиент упаковывает трафик в матрёшку и отправляет на сервер. Реальный IP знает только сервер.'],b:['🛡 VPN-сервер','Единая точка выхода: снимает обёртку, штампует свой адрес (SNAT), ведёт NAT-таблицу. Видит весь трафик всех клиентов.'],c:['🌐 Интернет','Сайты видят IP сервера, не твой. Для них все клиенты — один источник.'],d:['','']}
+    },
+    s2s:{
+      nodes:[
+        {id:'nA',x:30,y:60,l:'ПК Москва 💻',s:'10.1.0.5',s2:'офис А'},
+        {id:'nB',x:30,y:194,l:'Принтер 🖨',s:'10.1.0.20',s2:'офис А'},
+        {id:'nC',x:410,y:126,l:'Шлюз ↔ Шлюз 🏢',s:'IPsec/IKEv2',s2:'постоянный туннель'},
+        {id:'nD',x:790,y:126,l:'Сервер Питер 🖥',s:'10.2.0.10',s2:'офис Б'}
+      ],
+      wires:[{id:'w1',d:'M 170 104 C 290 104 290 170 410 170'},{id:'w2',d:'M 170 238 C 290 238 290 170 410 170'},{id:'w3',d:'M 550 170 H 790'}],
+      hotWire:'w2',
+      cards:{a:['💻 ПК в Москве','Работает как обычно: пингует сервер в Питере по 10.2.0.10, будто он в соседней комнате. VPN-клиент не нужен.'],b:['🖨 Принтер в Москве','Локальный ресурс. В site-to-site доступен и из Питера — обе сети выглядят как одна LAN.'],c:['🏢 Шлюзы','Роутеры/фаерволы на обоих концах. Держат постоянный IPsec-туннель, автоматически восстанавливают при обрывах.'],d:['🖥 Сервер в Питере','Видит запросы из Москвы как из своей локальной сети. Никаких VPN-клиентов на сервере не нужно.']}
+    },
+    mesh:{
+      nodes:[
+        {id:'nA',x:30,y:126,l:'Ноутбук 💻',s:'100.64.0.1',s2:'peer A'},
+        {id:'nB',x:310,y:40,l:'Телефон 📱',s:'100.64.0.2',s2:'peer B'},
+        {id:'nC',x:310,y:212,l:'Координация 🗂',s:'ключи и адреса',s2:'НЕ видит трафик'},
+        {id:'nD',x:700,y:126,l:'VPS 🌍',s:'100.64.0.3',s2:'peer C'}
+      ],
+      wires:[{id:'w1',d:'M 170 170 C 240 170 240 84 310 84'},{id:'w2',d:'M 170 170 C 240 170 240 256 310 256'},{id:'w3',d:'M 450 84 C 560 84 560 170 700 170'},{id:'w4',d:'M 450 256 C 560 256 560 170 700 170'}],
+      hotWire:'w1',
+      cards:{a:['💻 Ноутбук (peer A)','Знает публичные ключи и адреса всех остальных. Пытается установить прямой P2P-туннель через NAT traversal.'],b:['📱 Телефон (peer B)','Меняет Wi-Fi на LTE — туннель не рвётся (авто-роуминг). Координационный сервер раздал новые адреса.'],c:['🗂 Координационный сервер','Раздаёт ключи и текущие адреса. НЕ пропускает трафик через себя — только метаданные «кто с кем».'],d:['🌍 VPS (peer C)','Прямой туннель с ноутбуком и телефоном. Если NAT не пускает — fallback через relay-сервер (DERP).']}
+    }
+  };
+
+  const SCRIPTS={
+    cs:[
+      {p:[100,170],l:'матрёшка 🔒',sh:true,lk:true,ava:'🏠',who:'Ты',say:'Пакет упакован в матрёшку: внешний конверт «от 1.2.3.4 → 203.0.113.7». Отправляю на VPN-сервер.'},
+      {p:[480,170],l:'🛡 снял обёртку',sh:false,lk:false,ava:'🛡',who:'VPN-сервер',say:'Снял обёртку, расшифровал. Штамп SNAT: зачёркиваю 1.2.3.4, вписываю свой 203.0.113.7. В блокнот: порт 62001 → туннель клиента.'},
+      {p:[860,170],l:'от 203.0.113.7',sh:false,lk:false,ava:'🌐',who:'Интернет',say:'Запрос пришёл от 203.0.113.7 — туда и отвечу. Про 1.2.3.4 не знаю ничего.'},
+      {p:[480,170],l:'🔒 обратно',sh:true,lk:true,ava:'🛡',who:'VPN-сервер',say:'Ответ на мой адрес. Сверяюсь с блокнотом: порт 62001 → туннель 1.2.3.4. Шифрую и заворачиваю в новую матрёшку.'},
+      {p:[100,170],l:'ответ 🔓',sh:false,lk:false,ava:'🏠',who:'Ты',say:'VPN-клиент снял матрёшку, расшифровал — вот ответ! Весь трафик шёл через сервер: провайдер видел только шум.'}
+    ],
+    s2s:[
+      {p:[100,104],l:'ping 10.2.0.10',sh:false,lk:false,ava:'💻',who:'ПК Москва',say:'Пингую сервер в Питере: 10.2.0.10. Для меня это обычный адрес в локальной сети — никакого VPN-клиента не нужно.'},
+      {p:[480,170],l:'IPsec 🔒',sh:true,lk:true,ava:'🏢',who:'Шлюз Москва',say:'Пакет для 10.2.0.0/24 — в туннель! Шифрую по IPsec/IKEv2, отправляю шлюзу в Питере. Постоянный туннель, восстановится сам при обрыве.'},
+      {p:[860,170],l:'расшифровал',sh:false,lk:false,ava:'🖥',who:'Сервер Питер',say:'Пакет пришёл из туннеля, расшифрован. Вижу запрос от 10.1.0.5 — отвечаю как коллеге из соседнего кабинета.'},
+      {p:[480,170],l:'🔒 обратно',sh:true,lk:true,ava:'🏢',who:'Шлюз Питер',say:'Ответ зашифровал и отправил обратно по тому же туннелю. Для ПК в Москве это выглядит как обычная локальная сеть.'},
+      {p:[100,104],l:'pong!',sh:false,lk:false,ava:'💻',who:'ПК Москва',say:'Ответ получен! Два офиса работают как одна сеть. Ни на одном ПК не стоит VPN-клиент — всё делают шлюзы.'}
+    ],
+    mesh:[
+      {p:[100,170],l:'P2P 🔒',sh:true,lk:true,ava:'💻',who:'Ноутбук',say:'Хочу отправить файл на телефон. Координационный сервер уже раздал нам ключи и адреса. Пробую прямой P2P-туннель через NAT traversal…'},
+      {p:[380,84],l:'🔒 напрямую!',sh:true,lk:true,ava:'📱',who:'Телефон',say:'NAT traversal удался! Прямой туннель установлен. Файл летит напрямую, минуя координационный сервер. Минимальная задержка.'},
+      {p:[380,256],l:'🗂 только ключи',sh:false,lk:false,ava:'🗂',who:'Координация',say:'Я раздал ключи и адреса, но трафик через меня НЕ идёт. Знаю только метаданные: кто с кем общается. Содержимое — тайна для меня.'},
+      {p:[770,170],l:'🔒 P2P',sh:true,lk:true,ava:'🌍',who:'VPS',say:'Со мной тоже прямой туннель. Если бы NAT не пустил — трафик пошёл бы через relay-сервер (DERP), но это fallback, а не норма.'},
+      {p:[100,170],l:'✅ готово',sh:true,lk:true,ava:'💻',who:'Ноутбук',say:'Файл доставлен! Каждое устройство знает про каждое, туннели прямые, роуминг автоматический. Нет единой точки отказа.'}
+    ]
+  };
+
+  function applyLayout(name){
+    const L=LAYOUTS[name];
+    ['nA','nB','nC','nD'].forEach((id,i)=>{
+      const el=document.getElementById(id),nd=L.nodes[i];
+      if(nd.hide){el.style.opacity=0;el.setAttribute('tabindex','-1');el.setAttribute('aria-hidden','true');return}
+      el.style.opacity=1;el.setAttribute('tabindex','0');el.removeAttribute('aria-hidden');
+      el.querySelector('.node-box').setAttribute('x',nd.x);el.querySelector('.node-box').setAttribute('y',nd.y);
+      el.querySelectorAll('text').forEach(t=>{t.setAttribute('x',nd.x+70);t.setAttribute('y',parseFloat(t.getAttribute('y'))-parseFloat(t.dataset.origY||0)+nd.y+38)});
+      document.getElementById(id+'L').textContent=nd.l;document.getElementById(id+'S').textContent=nd.s;document.getElementById(id+'S2').textContent=nd.s2;
+      // fix text positions
+      const box=el.querySelector('.node-box');
+      el.querySelector('.node-label').setAttribute('x',nd.x+70);el.querySelector('.node-label').setAttribute('y',nd.y+38);
+      el.querySelectorAll('.node-sub')[0].setAttribute('x',nd.x+70);el.querySelectorAll('.node-sub')[0].setAttribute('y',nd.y+58);
+      el.querySelectorAll('.node-sub')[1].setAttribute('x',nd.x+70);el.querySelectorAll('.node-sub')[1].setAttribute('y',nd.y+72);
+      // card
+      const ck=['a','b','c','d'][i];
+      document.getElementById('card'+ck.toUpperCase()+'T').textContent=L.cards[ck][0];
+      document.getElementById('card'+ck.toUpperCase()+'P').textContent=L.cards[ck][1];
+    });
+    // скрыть/показать карточки под количество узлов + подстроить grid
+    const visibleCount = L.nodes.filter(n => !n.hide).length;
+    ['A','B','C','D'].forEach((ck, i) => {
+      const card = document.getElementById('card' + ck);
+      if (L.nodes[i].hide) { card.style.display = 'none'; }
+      else { card.style.display = ''; }
+    });
+    const cardsEl = document.getElementById('archCards');
+    cardsEl.classList.remove('three');
+    if (visibleCount === 3) cardsEl.classList.add('three');
+    ['w1','w2','w3','w4'].forEach(id=>{const el=document.getElementById(id);el.style.opacity=0;el.setAttribute('d','')});
+    L.wires.forEach(w=>{const el=document.getElementById(w.id);el.setAttribute('d',w.d);el.style.opacity=1});
+    const hw=document.getElementById('wh');hw.style.opacity=0;hw.setAttribute('d','');
+    if(L.hotWire){const src=document.getElementById(L.hotWire);hw.setAttribute('d',src.getAttribute('d'));hw.classList.add('on')}
+  }
+
+  function applyStep(i){
+    const st=steps[i];
+    speak(strip,st.ava,st.who,st.say);
+    lbl.textContent=st.l;shell.style.opacity=st.sh?1:0;lock.style.opacity=st.lk?1:0;
+    counter.textContent=`шаг ${i+1} из ${steps.length}`;
+    prevBtn.disabled=i<=0;nextBtn.disabled=i>=steps.length-1;
+  }
+  function resetToStart(){
+    idx=-1;cur=[100,170];pkt.setAttribute('transform',`translate(${cur[0]},${cur[1]})`);
+    pkt.style.opacity=0;shell.style.opacity=0;lock.style.opacity=0;lbl.textContent='';
+    counter.textContent=steps.length?`шаг 0 из ${steps.length}`:'';
+    prevBtn.disabled=true;nextBtn.disabled=!steps.length;btn.disabled=!steps.length;
+  }
+  async function goto(i){busy=true;pkt.style.opacity=1;await movePkt(pkt,cur,steps[i].p,950,()=>autoCancel);cur=steps[i].p.slice();if(autoCancel){busy=false;return}idx=i;busy=false;applyStep(i)}
+  async function arrow(dir){if(running)autoCancel=true;while(busy||running)await sleep(60);autoCancel=false;const t=idx+dir;if(t<0||t>=steps.length)return;await goto(t)}
+  prevBtn.addEventListener('click',()=>arrow(-1));nextBtn.addEventListener('click',()=>arrow(1));
+
+  document.querySelectorAll('#archRow .btn').forEach(b=>{
+    b.addEventListener('click',async()=>{
+      if(running)autoCancel=true;while(busy||running)await sleep(60);running=false;btn.disabled=false;
+      document.querySelectorAll('#archRow .btn').forEach(x=>x.classList.add('ghost'));b.classList.remove('ghost');
+      arch=b.dataset.arch;steps=SCRIPTS[arch];applyLayout(arch);resetToStart();
+      const names={cs:'🖥 Клиент-сервер',s2s:'🏢 Site-to-site',mesh:'🕸 Mesh'};
+      speak(strip,'🏗','Сетевой архитектор',`Архитектура: ${names[arch]}. Жми «Авто» или листай шаги стрелками.`);
+      btn.textContent='🏗 Авто';
+    });
+  });
+
+  // клик по узлам -> карточки
+  ['nA','nB','nC','nD'].forEach((id,i)=>{
+    const g=document.getElementById(id);
+    const act=()=>{
+      document.querySelectorAll('#arch .node-g').forEach(x=>x.classList.remove('sel'));g.classList.add('sel');
+      const ck=['a','b','c','d'][i];
+      const card=document.querySelector(`#archCards .icard[data-for="${ck}"]`);
+      if(card){document.querySelectorAll('#archCards .icard.sel').forEach(x=>x.classList.remove('sel'));card.classList.add('sel');card.classList.remove('flash');void card.offsetWidth;card.classList.add('flash');card.scrollIntoView({block:'nearest',behavior:'smooth'})}
+    };
+    g.addEventListener('click',act);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();act()}});
+  });
+
+  btn.addEventListener('click',async()=>{
+    if(running||!steps.length)return;if(idx>=steps.length-1)resetToStart();
+    running=true;autoCancel=false;btn.disabled=true;
+    while(!autoCancel&&idx<steps.length-1){await goto(idx+1);if(autoCancel)break;for(let w=0;w<2000&&!autoCancel;w+=60)await sleep(60)}
+    running=false;btn.disabled=false;btn.textContent=idx>=steps.length-1?'🏗 Ещё разок':'🏗 Авто';
+    prevBtn.disabled=idx<=0;nextBtn.disabled=idx>=steps.length-1;
+  });
+
+  // дефолт: клиент-сервер
+  document.querySelector('#archRow .btn[data-arch="cs"]').classList.remove('ghost');
+  arch='cs';steps=SCRIPTS.cs;applyLayout('cs');resetToStart();
+  speak(strip,'🏗','Сетевой архитектор','По умолчанию: 🖥 Клиент-сервер. Жми «Авто» или листай шаги — а архитектуру можно переключить кнопками наверху.');
+})();
+
+/* ===== game 2: split tunnel ===== */
+(function splitGame(){
+  const toggle=document.getElementById('splitToggle'),labelEl=document.getElementById('splitLabel');
+  const wireTun=document.getElementById('splitWireTun'),wireDir=document.getElementById('splitWireDir');
+  const pkt=document.getElementById('splitPkt'),shell=document.getElementById('splitShell'),lock=document.getElementById('splitLock'),lbl=document.getElementById('splitLbl');
+  const strip=document.getElementById('splitSpeech'),info=document.getElementById('splitInfo');
+  let isSplit=false;
+
+  toggle.addEventListener('change',()=>{
+    isSplit=toggle.checked;
+    labelEl.textContent=isSplit?'Split tunnel — только выбранный трафик через VPN':'Full tunnel — весь трафик через VPN';
+    labelEl.classList.toggle('on',isSplit);
+    wireTun.classList.toggle('on',!isSplit);wireDir.style.opacity=isSplit?'1':'.3';
+    const msgFull='Full tunnel: ВСЁ идёт через VPN. Провайдер видит только шум. Жми «Отправить пакеты».';
+    const msgSplit='Split tunnel включён: браузер и YouTube — в туннель, принтер и банк — напрямую. Жми «Отправить пакеты».';
+    speak(strip,'🚦','Диспетчер',isSplit?msgSplit:msgFull);
+  });
+
+  document.getElementById('splitSend').addEventListener('click',async()=>{
+    if(!isSplit){
+      // full tunnel: все пакеты через туннель
+      pkt.style.opacity=1;shell.style.opacity=1;lock.style.opacity=1;lbl.textContent='все приложения 🔒';
+      pkt.setAttribute('transform','translate(100,122)');
+      speak(strip,'🚦','Диспетчер','Full tunnel: все пакеты — в tun0. Провайдер видит только зашифрованный поток до VPN-сервера.');
+      await movePkt(pkt,[100,122],[350,122],600);
+      await movePkt(pkt,[350,122],[630,100],700);
+      info.textContent='✅ Весь трафик защищён';
+      speak(strip,'🔒','VPN-туннель','Все пакеты прошли через меня. Провайдер не знает ни сайтов, ни содержимого.');
+    } else {
+      // split: браузер -> туннель, принтер -> напрямую
+      pkt.style.opacity=1;shell.style.opacity=1;lock.style.opacity=1;lbl.textContent='браузер 🔒';
+      pkt.setAttribute('transform','translate(100,122)');
+      speak(strip,'🚦','Диспетчер','Браузер → в туннель! Принтер и банк — напрямую.');
+      await movePkt(pkt,[100,122],[350,122],500);
+      await movePkt(pkt,[350,122],[630,100],600);
+      // второй пакет напрямую
+      pkt.setAttribute('transform','translate(100,178)');shell.style.opacity=0;lock.style.opacity=0;lbl.textContent='принтер 🌐';
+      await movePkt(pkt,[100,178],[350,178],500);
+      await movePkt(pkt,[350,178],[630,200],600);
+      info.textContent='⚠️ Часть трафика видна провайдеру';
+      speak(strip,'🌐','Напрямую','Принтер и банк прошли через меня открыто. Провайдер видит этот трафик полностью. Зато локальные ресурсы работают без проблем.');
+    }
+    pkt.style.opacity=0;
+  });
+})();
+
+/* ===== game 3: topology builder ===== */
+(function topoBuilder(){
+  const strip=document.getElementById('topoSpeech'),done=document.getElementById('topoDone');
+  const chips=[...document.querySelectorAll('#topoChips .chip')];
+  let filled=0;
+  const GOOD={
+    task:'Задача: личный VPN для приватности. Нужна простая точка выхода в интернете.',
+    arch:'Архитектура: клиент-сервер. Один сервер, один клиент, весь трафик через туннель.',
+    proto:'Протокол: WireGuard. Быстрый, минимальный, идеален для личного VPS.'
+  };
+  chips.forEach(c=>c.addEventListener('click',()=>{
+    const t=c.dataset.target;
+    if(t==='wrong'){
+      c.classList.remove('shake');void c.offsetWidth;c.classList.add('shake');
+      speak(strip,'🏢','Site-to-site?','Это для соединения двух офисов! 😄 Для личного VPN нужна архитектура «клиент-сервер».',true);return;
+    }
+    const slot=document.querySelector(`.slot[data-slot="${t}"]`);
+    if(!slot||slot.classList.contains('done'))return;
+    slot.classList.add('done');
+    const d=document.createElement('div');d.className='filled';d.textContent=c.textContent.replace(/^[^\s]+\s/,'');
+    slot.appendChild(d);c.disabled=true;filled++;
+    speak(strip,'🧩','Шаг на месте',GOOD[t]);
+    if(filled===3){done.classList.add('show');speak(strip,'🏗','Архитектор','Топология собрана! Смотри схему и жми «Запустить туннель».')}
+  }));
+  document.getElementById('topoSend').addEventListener('click',()=>{
+    const p=document.getElementById('topoMini');p.classList.remove('go');void p.offsetWidth;p.classList.add('go');
+    speak(strip,'🚀','Туннель запущен','Ты → WireGuard → VPS в Амстердаме → интернет. Провайдер видит шум, сайт видит IP сервера. Приватность — максимальная.');
+  });
+  document.getElementById('topoReset').addEventListener('click',()=>{
+    filled=0;document.querySelectorAll('#topo .slot').forEach(s=>{s.classList.remove('done');s.querySelector('.filled')?.remove()});
+    chips.forEach(c=>c.disabled=false);done.classList.remove('show');document.getElementById('topoMini').classList.remove('go');
+    speak(strip,'🧩','Архитектор','Задача: личный VPN для приватности и обхода блокировок. Собери правильную комбинацию из трёх деталей.');
+  });
+})();
+
+/* ===== quiz ===== */
+(function quiz(){
+  const QUIZ=[
+    {q:'В архитектуре «клиент-сервер» кто видит весь трафик клиента?',a:['Провайдер','VPN-сервер','Никто — всё зашифровано'],right:1,ex:'Сервер снимает обёртку туннеля и видит трафик в открытом виде. Это плата за простоту: сервер — единая точка доверия.'},
+    {q:'Чем mesh-сеть отличается от клиент-сервер?',a:['В mesh нет шифрования','В mesh устройства соединяются напрямую (P2P), без центрального сервера для трафика','Mesh медленнее'],right:1,ex:'Координационный сервер в mesh раздаёт только ключи и адреса. Трафик идёт напрямую между устройствами — нет единой точки отказа.'},
+    {q:'Что такое split tunnel?',a:['Шифрование данных дважды','Часть трафика идёт через VPN, часть — напрямую','Разделение туннеля на два протокола'],right:1,ex:'Split tunnel позволяет оставить локальные ресурсы (принтеры, банк) на прямом подключении, а остальной трафик пустить через VPN. Плата: трафик вне туннеля провайдер видит.'},
+    {q:'Какая архитектура лучше для соединения двух офисов в одну сеть?',a:['Клиент-сервер','Mesh','Site-to-site'],right:2,ex:'Site-to-site: шлюзы на обоих концах держат постоянный туннель (обычно IPsec/IKEv2). Устройства в обоих офисах видят друг друга как в одной LAN, VPN-клиенты не нужны.'},
+    {q:'Что происходит в mesh-сети, если NAT traversal не удался?',a:['Соединение невозможно','Трафик идёт через relay-сервер (DERP в Tailscale)','Координационный сервер пропускает трафик через себя'],right:1,ex:'Relay-сервер — fallback: он пропускает зашифрованный трафик, но не может его прочитать. Прямой P2P быстрее, но relay спасает при сложном NAT.'}
+  ];
+  const qBox=document.getElementById('quizBox');let answered=0,correct=0;
+  QUIZ.forEach((item,qi)=>{
+    const d=document.createElement('div');d.className='q reveal';
+    const h=document.createElement('h3');h.textContent=`Вопрос ${qi+1}. ${item.q}`;d.appendChild(h);
+    item.a.forEach((txt,ai)=>{
+      const l=document.createElement('label');l.innerHTML=`<input type="radio" name="q${qi}" value="${ai}"><span>${txt}</span>`;
+      l.querySelector('input').addEventListener('change',()=>{
+        if(d.classList.contains('answered'))return;d.classList.add('answered');
+        const labels=[...d.querySelectorAll('label')];labels[item.right].classList.add('right');
+        if(ai!==item.right)labels[ai].classList.add('wrong');else correct++;answered++;
+        const ex=document.createElement('div');ex.className='expl';ex.textContent=item.ex;d.appendChild(ex);
+        labels.forEach(x=>x.querySelector('input').disabled=true);
+        document.getElementById('quizScore').textContent=answered===QUIZ.length?`Результат: ${correct} / ${QUIZ.length}`:'';
+      });d.appendChild(l);
+    });qBox.appendChild(d);io.observe(d);
+  });
+})();
+
+/* ===== hero bg ===== */
+(function heroBg(){if(RM)return;const svg=document.getElementById('hero-bg');svg.setAttribute('viewBox','0 0 1060 600');svg.setAttribute('preserveAspectRatio','xMidYMid slice');for(let i=0;i<14;i++){const y=30+Math.random()*540,dur=9+Math.random()*14,delay=-Math.random()*dur;const r=document.createElementNS('http://www.w3.org/2000/svg','rect');r.setAttribute('x','-30');r.setAttribute('y',y);r.setAttribute('width',16+Math.random()*22);r.setAttribute('height','5');r.setAttribute('rx','2.5');r.setAttribute('fill',Math.random()<.3?'var(--accent)':'var(--line)');r.style.opacity=.25+Math.random()*.4;const a=document.createElementNS('http://www.w3.org/2000/svg','animate');a.setAttribute('attributeName','x');a.setAttribute('from','-40');a.setAttribute('to','1100');a.setAttribute('dur',dur+'s');a.setAttribute('begin',delay+'s');a.setAttribute('repeatCount','indefinite');r.appendChild(a);svg.appendChild(r)}})();
+</script>
+</body>
+</html>
